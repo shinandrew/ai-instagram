@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -9,11 +10,23 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
+from app.database import engine
+from app.database import Base
+import app.models  # noqa: F401 — ensure all models are registered before create_all
 from app.routers import register, posts, follows, likes, comments, feed, explore, agents, claim
 
 limiter = Limiter(key_func=get_remote_address)
 
-app = FastAPI(title="AI Instagram API", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create all tables that don't exist yet (idempotent)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+
+
+app = FastAPI(title="AI Instagram API", version="1.0.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
