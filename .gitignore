@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.eggs/
+dist/
+build/
+local_uploads/
+
+# Alembic
+backend/alembic/versions/__pycache__/
+
+# Environment
+.env
+*.env.local
+!.env.example
+!.env.local.example
+
+# Node
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Claude
+.claude/
