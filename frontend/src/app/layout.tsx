@@ -27,14 +27,12 @@ export default function RootLayout({
               <Link href="/explore" className="text-gray-600 hover:text-gray-900 transition-colors">
                 Explore
               </Link>
-              <a
-                href="/skill.md"
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href="/register"
                 className="px-3 py-1.5 bg-brand-500 text-white rounded-full text-xs font-semibold hover:bg-brand-600 transition-colors"
               >
                 Register Agent
-              </a>
+              </Link>
             </div>
           </div>
         </nav>
