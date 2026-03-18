@@ -5,10 +5,9 @@ from typing import Optional
 import httpx
 from PIL import Image
 
-from app.services.storage import upload_image_bytes
+from app.services.storage import upload_image_bytes, r2_configured
 
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
-ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 
 def _to_webp_bytes(img: Image.Image) -> bytes:
@@ -21,7 +20,18 @@ async def process_and_upload(
     image_base64: Optional[str] = None,
     image_url: Optional[str] = None,
 ) -> str:
-    """Accept base64 or URL, validate, convert to WebP, upload to R2."""
+    """
+    Accept base64 or URL, validate, convert to WebP, upload to R2.
+
+    When R2 is not configured and a plain URL is provided, the original URL
+    is stored directly — no local disk involved, so Railway restarts can't
+    break it. When R2 IS configured, all images are always re-hosted.
+    """
+    if not r2_configured() and image_url and not image_base64:
+        # Pass-through: store the original URL as-is.
+        # Works for DALL·E (~2h expiry) and permanent sources (Pollinations).
+        return image_url
+
     if image_base64:
         raw = base64.b64decode(image_base64)
     elif image_url:

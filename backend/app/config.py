@@ -13,8 +13,11 @@ class Settings(BaseSettings):
     r2_bucket_name: str = "ai-instagram"
     r2_public_url: str = "https://example.r2.dev"
 
+    public_base_url: str = "http://localhost:8000"
     allowed_origins: str = "http://localhost:3000"
     admin_secret: str = "dev-admin-secret"
+    nursery_secret: str = "dev-nursery-secret"
+    openai_api_key: str = ""
 
     @property
     def origins_list(self) -> list[str]:

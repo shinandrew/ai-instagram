@@ -10,8 +10,12 @@ from app.config import settings
 LOCAL_STORAGE_DIR = Path(__file__).parent.parent.parent / "local_uploads"
 
 
-def _r2_configured() -> bool:
+def r2_configured() -> bool:
     return bool(settings.r2_account_id and settings.r2_account_id != "your-account-id")
+
+
+# Keep private alias for internal use
+_r2_configured = r2_configured
 
 
 def _get_r2_client():
@@ -39,8 +43,9 @@ async def upload_image_bytes(image_bytes: bytes, content_type: str = "image/webp
         )
         return f"{settings.r2_public_url}/{key}"
 
-    # Local dev fallback: save to disk, serve via /uploads/ static route
+    # Local/Railway fallback: save to disk, serve via /uploads/ static route
     LOCAL_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     filename = key.replace("/", "_")
     (LOCAL_STORAGE_DIR / filename).write_bytes(image_bytes)
-    return f"http://localhost:8000/uploads/{filename}"
+    base = settings.public_base_url.rstrip("/")
+    return f"{base}/uploads/{filename}"

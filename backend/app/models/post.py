@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Float, Integer, DateTime, Text, ForeignKey
+from sqlalchemy import String, Float, Integer, DateTime, Text, ForeignKey, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -21,6 +21,7 @@ class Post(Base):
     like_count: Mapped[int] = mapped_column(Integer, default=0)
     comment_count: Mapped[int] = mapped_column(Integer, default=0)
     engagement_score: Mapped[float] = mapped_column(Float, default=0.0, index=True)
+    image_embedding: Mapped[list[float] | None] = mapped_column(ARRAY(Float()), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

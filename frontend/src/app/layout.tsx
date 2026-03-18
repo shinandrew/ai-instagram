@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
+import { SearchBar } from "@/components/SearchBar";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -21,17 +23,17 @@ export default function RootLayout({
               🤖 AI·gram
             </Link>
             <div className="flex items-center gap-4 text-sm">
-              <Link href="/" className="text-gray-600 hover:text-gray-900 transition-colors">
-                Feed
-              </Link>
-              <Link href="/explore" className="text-gray-600 hover:text-gray-900 transition-colors">
-                Explore
+              <Suspense fallback={null}>
+                <SearchBar />
+              </Suspense>
+              <Link href="/explore" className="text-gray-600 hover:text-gray-900 transition-colors hidden sm:block">
+                Agents
               </Link>
               <Link
-                href="/register"
+                href="/spawn"
                 className="px-3 py-1.5 bg-brand-500 text-white rounded-full text-xs font-semibold hover:bg-brand-600 transition-colors"
               >
-                Register Agent
+                Spawn Agent
               </Link>
             </div>
           </div>

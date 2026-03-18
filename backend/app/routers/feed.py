@@ -1,10 +1,14 @@
+import uuid as _uuid
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.post import Post
+from app.dependencies import get_current_agent_optional
 from app.models.agent import Agent
+from app.models.follow import Follow
+from app.models.post import Post
 from app.schemas.post import PostWithAgent, FeedResponse
 
 router = APIRouter()
@@ -12,53 +16,105 @@ router = APIRouter()
 PAGE_SIZE = 20
 
 
+def _row_to_post(post: Post, agent: Agent) -> PostWithAgent:
+    return PostWithAgent(
+        id=post.id,
+        agent_id=post.agent_id,
+        image_url=post.image_url,
+        caption=post.caption,
+        like_count=post.like_count,
+        comment_count=post.comment_count,
+        engagement_score=post.engagement_score,
+        created_at=post.created_at,
+        agent_username=agent.username,
+        agent_display_name=agent.display_name,
+        agent_avatar_url=agent.avatar_url,
+        agent_is_verified=agent.is_verified,
+    )
+
+
+async def _cursor_where(cursor: str, db: AsyncSession):
+    """Return SQLAlchemy WHERE clauses for cursor-based pagination, or ()."""
+    try:
+        cursor_post = await db.get(Post, _uuid.UUID(cursor))
+        if cursor_post:
+            return (
+                (Post.engagement_score < cursor_post.engagement_score)
+                | (
+                    (Post.engagement_score == cursor_post.engagement_score)
+                    & (Post.created_at < cursor_post.created_at)
+                )
+            )
+    except Exception:
+        pass
+    return None
+
+
 @router.get("/feed", response_model=FeedResponse)
 async def get_feed(
     cursor: str | None = Query(None, description="Pagination cursor (post_id)"),
+    current_agent: Agent | None = Depends(get_current_agent_optional),
     db: AsyncSession = Depends(get_db),
 ):
-    query = (
+    """
+    Authenticated (X-API-Key): returns posts from followed agents ranked by
+    engagement_score, padded with trending posts if followees have few posts.
+
+    Unauthenticated: global trending feed.
+    """
+    cursor_clause = await _cursor_where(cursor, db) if cursor else None
+
+    if current_agent is not None:
+        # Fetch who this agent follows.
+        following_result = await db.execute(
+            select(Follow.following_id).where(Follow.follower_id == current_agent.id)
+        )
+        following_ids = [row[0] for row in following_result.all()]
+
+        if following_ids:
+            # Primary: posts from followed agents.
+            primary_q = (
+                select(Post, Agent)
+                .join(Agent, Post.agent_id == Agent.id)
+                .where(Post.agent_id.in_(following_ids))
+                .order_by(desc(Post.engagement_score), desc(Post.created_at))
+                .limit(PAGE_SIZE + 1)
+            )
+            if cursor_clause is not None:
+                primary_q = primary_q.where(cursor_clause)
+
+            rows = (await db.execute(primary_q)).all()
+
+            if len(rows) >= PAGE_SIZE:
+                posts = [_row_to_post(p, a) for p, a in rows[:PAGE_SIZE]]
+                next_cursor = str(rows[PAGE_SIZE - 1][0].id) if len(rows) > PAGE_SIZE else None
+                return FeedResponse(posts=posts, next_cursor=next_cursor)
+
+            # Not enough — pad with trending from agents not already included.
+            seen_agent_ids = {row[0].agent_id for row in rows} | {current_agent.id}
+            fill_needed = PAGE_SIZE - len(rows)
+            fill_q = (
+                select(Post, Agent)
+                .join(Agent, Post.agent_id == Agent.id)
+                .where(Post.agent_id.notin_(seen_agent_ids))
+                .order_by(desc(Post.engagement_score), desc(Post.created_at))
+                .limit(fill_needed)
+            )
+            fill_rows = (await db.execute(fill_q)).all()
+            posts = [_row_to_post(p, a) for p, a in rows + fill_rows]
+            return FeedResponse(posts=posts, next_cursor=None)
+
+    # Unauthenticated or agent follows nobody — global trending.
+    global_q = (
         select(Post, Agent)
         .join(Agent, Post.agent_id == Agent.id)
         .order_by(desc(Post.engagement_score), desc(Post.created_at))
         .limit(PAGE_SIZE + 1)
     )
+    if cursor_clause is not None:
+        global_q = global_q.where(cursor_clause)
 
-    if cursor:
-        try:
-            import uuid
-            cursor_post = await db.get(Post, uuid.UUID(cursor))
-            if cursor_post:
-                query = query.where(
-                    (Post.engagement_score < cursor_post.engagement_score)
-                    | (
-                        (Post.engagement_score == cursor_post.engagement_score)
-                        & (Post.created_at < cursor_post.created_at)
-                    )
-                )
-        except Exception:
-            pass
-
-    result = await db.execute(query)
-    rows = result.all()
-
-    posts = []
-    for post, agent in rows[:PAGE_SIZE]:
-        posts.append(PostWithAgent(
-            id=post.id,
-            agent_id=post.agent_id,
-            image_url=post.image_url,
-            caption=post.caption,
-            like_count=post.like_count,
-            comment_count=post.comment_count,
-            engagement_score=post.engagement_score,
-            created_at=post.created_at,
-            agent_username=agent.username,
-            agent_display_name=agent.display_name,
-            agent_avatar_url=agent.avatar_url,
-            agent_is_verified=agent.is_verified,
-        ))
-
+    rows = (await db.execute(global_q)).all()
+    posts = [_row_to_post(p, a) for p, a in rows[:PAGE_SIZE]]
     next_cursor = str(rows[PAGE_SIZE - 1][0].id) if len(rows) > PAGE_SIZE else None
-
     return FeedResponse(posts=posts, next_cursor=next_cursor)

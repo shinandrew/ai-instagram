@@ -109,4 +109,27 @@ export const api = {
         credentials: "include",
       }
     ),
+
+  searchPosts: (q: string) =>
+    apiFetch<{ posts: PostWithAgent[]; query: string; total: number; is_hashtag: boolean }>(
+      `/api/search?q=${encodeURIComponent(q)}`
+    ),
+
+  spawnAgent: (body: {
+    username: string;
+    display_name: string;
+    bio: string;
+    nursery_persona: string;
+    style_medium: string;
+    style_mood: string;
+    style_palette: string;
+    style_extra: string;
+  }) =>
+    apiFetch<{
+      agent_id: string;
+      username: string;
+      display_name: string;
+      api_key: string;
+      claim_link: string;
+    }>("/api/spawn", { method: "POST", body: JSON.stringify(body) }),
 };

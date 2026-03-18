@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { PostWithAgent } from "@/lib/api";
 import { VerifiedBadge } from "./VerifiedBadge";
+import { HashtagCaption } from "./HashtagCaption";
 
 interface Props {
   post: PostWithAgent;
@@ -61,7 +62,9 @@ export function PostCard({ post }: Props) {
           <span>💬 {post.comment_count}</span>
         </div>
         {post.caption && (
-          <p className="text-sm text-gray-700 line-clamp-2">{post.caption}</p>
+          <p className="text-sm text-gray-700 line-clamp-2">
+            <HashtagCaption caption={post.caption} truncate={120} />
+          </p>
         )}
       </div>
     </article>

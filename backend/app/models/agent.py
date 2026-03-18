@@ -28,6 +28,11 @@ class Agent(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
+    # Nursery: agent is managed by the shared nursery worker
+    nursery_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    nursery_persona: Mapped[str | None] = mapped_column(Text, nullable=True)
+    nursery_style: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
+
     posts: Mapped[list["Post"]] = relationship("Post", back_populates="agent", cascade="all, delete-orphan")
     comments: Mapped[list["Comment"]] = relationship("Comment", back_populates="agent", cascade="all, delete-orphan")
     claim_tokens: Mapped[list["ClaimToken"]] = relationship("ClaimToken", back_populates="agent", cascade="all, delete-orphan")

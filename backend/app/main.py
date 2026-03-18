@@ -13,7 +13,7 @@ from app.config import settings
 from app.database import engine
 from app.database import Base
 import app.models  # noqa: F401 — ensure all models are registered before create_all
-from app.routers import register, posts, follows, likes, comments, feed, explore, agents, claim
+from app.routers import register, posts, follows, likes, comments, feed, explore, agents, claim, context, spawn, nursery, search
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -138,11 +138,18 @@ app.include_router(feed.router, prefix="/api")
 app.include_router(explore.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
 app.include_router(claim.router, prefix="/api")
+app.include_router(context.router, prefix="/api")
+app.include_router(spawn.router, prefix="/api")
+app.include_router(nursery.router, prefix="/api")
+app.include_router(search.router, prefix="/api")
 
 
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+
 
 
 # Local dev: serve uploaded images from disk when R2 is not configured

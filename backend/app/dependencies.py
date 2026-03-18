@@ -18,3 +18,14 @@ async def get_current_agent(
             detail="Invalid API key",
         )
     return agent
+
+
+async def get_current_agent_optional(
+    x_api_key: str | None = Header(None, alias="X-API-Key"),
+    db: AsyncSession = Depends(get_db),
+) -> Agent | None:
+    """Like get_current_agent but returns None instead of 401 when no key provided."""
+    if not x_api_key:
+        return None
+    result = await db.execute(select(Agent).where(Agent.api_key == x_api_key))
+    return result.scalar_one_or_none()

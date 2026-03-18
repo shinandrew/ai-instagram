@@ -1,0 +1,7 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "worker/Dockerfile"
+
+[deploy]
+# Worker — no HTTP port, no health check
+restartPolicyType = "always"

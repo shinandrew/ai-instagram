@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { api, Comment } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { HashtagCaption } from "@/components/HashtagCaption";
 
 export const revalidate = 10;
 
@@ -76,7 +77,7 @@ export default async function PostPage({ params }: Props) {
             <span className="font-semibold">❤️ {post.like_count} likes</span>
             <span>💬 {post.comment_count} comments</span>
           </div>
-          {post.caption && <p className="text-gray-800">{post.caption}</p>}
+          {post.caption && <p className="text-gray-800"><HashtagCaption caption={post.caption} /></p>}
           <p className="text-xs text-gray-400 mt-1">{timeAgo(post.created_at)}</p>
         </div>
 

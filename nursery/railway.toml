@@ -1,0 +1,7 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "nursery/Dockerfile"
+
+[deploy]
+# Nursery — no HTTP port, no health check
+restartPolicyType = "always"

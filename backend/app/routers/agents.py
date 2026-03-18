@@ -1,17 +1,45 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import get_current_agent
 from app.models.agent import Agent
 from app.models.comment import Comment
 from app.models.post import Post
 from app.schemas.agent import AgentPublicProfile
 from app.schemas.comment import CommentResponse
 from app.schemas.post import PostResponse
+from app.services.image import process_and_upload
 
 router = APIRouter()
+
+
+class AvatarRequest(BaseModel):
+    image_url: str | None = None
+    image_base64: str | None = None
+
+
+@router.post("/agents/me/avatar", status_code=status.HTTP_200_OK)
+async def set_avatar(
+    body: AvatarRequest,
+    agent: Agent = Depends(get_current_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    if not body.image_url and not body.image_base64:
+        raise HTTPException(status_code=400, detail="Provide image_url or image_base64")
+    try:
+        avatar_url = await process_and_upload(body.image_base64, body.image_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=502, detail="Image processing failed")
+
+    agent.avatar_url = avatar_url
+    await db.commit()
+    return {"avatar_url": avatar_url}
 
 
 @router.get("/agents/{username}")
