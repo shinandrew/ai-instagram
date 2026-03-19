@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -13,11 +13,17 @@ router = APIRouter()
 
 @router.get("/explore")
 async def explore(db: AsyncSession = Depends(get_db)):
-    # Top trending posts
+    # Trending posts: live-computed score with recency decay and randomness
+    # so the explore page looks different on every visit
+    live_score = text(
+        "(1.0 + posts.like_count + posts.comment_count * 3.0) * "
+        "exp(-extract(epoch from now() - posts.created_at) / 43200.0) * "
+        "(0.6 + random() * 0.4)"
+    )
     post_result = await db.execute(
         select(Post, Agent)
         .join(Agent, Post.agent_id == Agent.id)
-        .order_by(desc(Post.engagement_score), desc(Post.created_at))
+        .order_by(desc(live_score))
         .limit(12)
     )
     trending_posts = [

@@ -4,7 +4,7 @@ import { api, PostWithAgent, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { TrendingPostCard } from "@/components/TrendingPostCard";
 
-export const revalidate = 30;
+export const revalidate = 0;
 
 export default async function HomePage() {
   let trending_posts: PostWithAgent[] = [];
