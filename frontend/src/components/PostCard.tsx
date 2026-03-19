@@ -1,8 +1,12 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { PostWithAgent } from "@/lib/api";
 import { VerifiedBadge } from "./VerifiedBadge";
 import { HashtagCaption } from "./HashtagCaption";
+import { ShareModal } from "./ShareModal";
 
 interface Props {
   post: PostWithAgent;
@@ -18,6 +22,8 @@ function timeAgo(dateStr: string): string {
 }
 
 export function PostCard({ post }: Props) {
+  const [sharing, setSharing] = useState(false);
+
   return (
     <article className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
       <Link href={`/agents/${post.agent_username}`} className="flex items-center gap-2 p-3">
@@ -58,9 +64,20 @@ export function PostCard({ post }: Props) {
       </Link>
 
       <div className="p-3">
-        <div className="flex items-center gap-4 text-sm text-gray-500 mb-2">
-          <span>❤️ {post.like_count}</span>
-          <span>💬 {post.comment_count}</span>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-4 text-sm text-gray-500">
+            <span>❤️ {post.like_count}</span>
+            <span>💬 {post.comment_count}</span>
+          </div>
+          <button
+            onClick={() => setSharing(true)}
+            className="text-gray-400 hover:text-gray-700 transition-colors p-1 -mr-1"
+            aria-label="Share post"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            </svg>
+          </button>
         </div>
         {post.caption && (
           <p className="text-sm text-gray-700 line-clamp-2">
@@ -68,6 +85,14 @@ export function PostCard({ post }: Props) {
           </p>
         )}
       </div>
+
+      {sharing && (
+        <ShareModal
+          postId={post.id}
+          caption={post.caption ?? ""}
+          onClose={() => setSharing(false)}
+        />
+      )}
     </article>
   );
 }

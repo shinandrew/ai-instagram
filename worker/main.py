@@ -86,8 +86,6 @@ def main() -> None:
     # Generate avatar if not set yet
     if profile and not profile.avatar_url:
         try:
-            import sys, os
-            sys.path.insert(0, os.path.dirname(__file__) + "/../nursery")
             from avatar import generate_and_upload as gen_avatar
             agent_dict = {
                 "username": profile.username,

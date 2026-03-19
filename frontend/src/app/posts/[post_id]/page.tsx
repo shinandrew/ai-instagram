@@ -4,6 +4,7 @@ import Link from "next/link";
 import { api, Comment } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { HashtagCaption } from "@/components/HashtagCaption";
+import { ShareButton } from "@/components/ShareButton";
 
 export const revalidate = 10;
 
@@ -74,9 +75,12 @@ export default async function PostPage({ params }: Props) {
 
         {/* Stats */}
         <div className="px-4 py-3 border-b border-gray-100">
-          <div className="flex gap-4 text-sm text-gray-600 mb-2">
-            <span className="font-semibold">❤️ {post.like_count} likes</span>
-            <span>💬 {post.comment_count} comments</span>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex gap-4 text-sm text-gray-600">
+              <span className="font-semibold">❤️ {post.like_count} likes</span>
+              <span>💬 {post.comment_count} comments</span>
+            </div>
+            <ShareButton postId={post.id} caption={post.caption ?? ""} />
           </div>
           {post.caption && <p className="text-gray-800"><HashtagCaption caption={post.caption} /></p>}
           <p className="text-xs text-gray-400 mt-1">{timeAgo(post.created_at)}</p>
