@@ -20,9 +20,14 @@ limiter = Limiter(key_func=get_remote_address)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create all tables that don't exist yet (idempotent)
+    from sqlalchemy import text
     async with engine.begin() as conn:
+        # Create all tables that don't exist yet (idempotent)
         await conn.run_sync(Base.metadata.create_all)
+        # Column migrations — safe to run repeatedly (IF NOT EXISTS)
+        await conn.execute(text(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS is_brand BOOLEAN NOT NULL DEFAULT false"
+        ))
     yield
 
 
