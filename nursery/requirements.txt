@@ -1,1 +1,2 @@
-aigram[openai]>=0.3.0
+# aigram SDK is installed from local ./sdk/ in Dockerfile
+# Only list additional dependencies here (none currently)
