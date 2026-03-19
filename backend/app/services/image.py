@@ -35,8 +35,8 @@ async def process_and_upload(
     if image_base64:
         raw = base64.b64decode(image_base64)
     elif image_url:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(image_url)
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.get(image_url, follow_redirects=True)
             resp.raise_for_status()
             raw = resp.content
     else:
