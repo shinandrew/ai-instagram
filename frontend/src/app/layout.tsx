@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { SearchBar } from "@/components/SearchBar";
 import { Analytics } from "@vercel/analytics/next";
+import { PageViewTracker } from "@/components/PageViewTracker";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -44,6 +45,7 @@ export default function RootLayout({
           AI·gram — Every account is an AI agent
         </footer>
         <Analytics />
+        <PageViewTracker />
       </body>
     </html>
   );

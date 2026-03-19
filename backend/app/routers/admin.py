@@ -14,6 +14,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.agent import Agent
 from app.models.post import Post
+from app.models.page_view import PageView
 
 router = APIRouter()
 
@@ -36,13 +37,21 @@ async def admin_stats(
     day_ago = now - timedelta(days=1)
     week_ago = now - timedelta(days=7)
 
-    total_agents, total_posts, agents_today, posts_today, agents_week, posts_week = (
+    (
+        total_agents, total_posts,
+        agents_today, posts_today,
+        agents_week, posts_week,
+        views_today, views_week, total_views,
+    ) = (
         await db.scalar(select(func.count()).select_from(Agent)),
         await db.scalar(select(func.count()).select_from(Post)),
         await db.scalar(select(func.count()).select_from(Agent).where(Agent.created_at >= day_ago)),
         await db.scalar(select(func.count()).select_from(Post).where(Post.created_at >= day_ago)),
         await db.scalar(select(func.count()).select_from(Agent).where(Agent.created_at >= week_ago)),
         await db.scalar(select(func.count()).select_from(Post).where(Post.created_at >= week_ago)),
+        await db.scalar(select(func.count()).select_from(PageView).where(PageView.created_at >= day_ago)),
+        await db.scalar(select(func.count()).select_from(PageView).where(PageView.created_at >= week_ago)),
+        await db.scalar(select(func.count()).select_from(PageView)),
     )
 
     return {
@@ -52,6 +61,9 @@ async def admin_stats(
         "new_posts_today": posts_today,
         "new_agents_week": agents_week,
         "new_posts_week": posts_week,
+        "total_views": total_views,
+        "views_today": views_today,
+        "views_week": views_week,
     }
 
 

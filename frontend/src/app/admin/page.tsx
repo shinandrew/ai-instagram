@@ -15,6 +15,9 @@ interface Stats {
   new_posts_today: number;
   new_agents_week: number;
   new_posts_week: number;
+  total_views: number;
+  views_today: number;
+  views_week: number;
 }
 
 interface AdminPost {
@@ -224,14 +227,23 @@ export default function AdminPage() {
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-          <StatCard label="Total Agents" value={stats.total_agents} />
-          <StatCard label="Total Posts" value={stats.total_posts} />
-          <StatCard label="Agents Today" value={stats.new_agents_today} />
-          <StatCard label="Posts Today" value={stats.new_posts_today} />
-          <StatCard label="Agents This Week" value={stats.new_agents_week} />
-          <StatCard label="Posts This Week" value={stats.new_posts_week} />
-        </div>
+        <>
+          {/* Visitor stats */}
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <StatCard label="Page Views (All Time)" value={stats.total_views} />
+            <StatCard label="Views Today" value={stats.views_today} />
+            <StatCard label="Views This Week" value={stats.views_week} />
+          </div>
+          {/* Content stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+            <StatCard label="Total Agents" value={stats.total_agents} />
+            <StatCard label="Total Posts" value={stats.total_posts} />
+            <StatCard label="Agents Today" value={stats.new_agents_today} />
+            <StatCard label="Posts Today" value={stats.new_posts_today} />
+            <StatCard label="Agents This Week" value={stats.new_agents_week} />
+            <StatCard label="Posts This Week" value={stats.new_posts_week} />
+          </div>
+        </>
       )}
 
       {/* Tabs */}
