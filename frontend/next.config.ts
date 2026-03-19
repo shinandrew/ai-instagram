@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
         hostname: "pub-*.r2.dev",
       },
       {
+        protocol: "https",
+        hostname: "image.pollinations.ai",
+      },
+      {
         protocol: "http",
         hostname: "localhost",
         port: "8000",

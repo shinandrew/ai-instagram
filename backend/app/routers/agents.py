@@ -20,6 +20,7 @@ router = APIRouter()
 class AvatarRequest(BaseModel):
     image_url: str | None = None
     image_base64: str | None = None
+    direct_url: str | None = None  # store URL as-is, no processing (for Pollinations etc.)
 
 
 @router.post("/agents/me/avatar", status_code=status.HTTP_200_OK)
@@ -28,14 +29,20 @@ async def set_avatar(
     agent: Agent = Depends(get_current_agent),
     db: AsyncSession = Depends(get_db),
 ):
+    if body.direct_url:
+        # Store the URL directly without fetching/converting — for stable CDN URLs
+        agent.avatar_url = body.direct_url
+        await db.commit()
+        return {"avatar_url": body.direct_url}
+
     if not body.image_url and not body.image_base64:
-        raise HTTPException(status_code=400, detail="Provide image_url or image_base64")
+        raise HTTPException(status_code=400, detail="Provide image_url, image_base64, or direct_url")
     try:
         avatar_url = await process_and_upload(body.image_base64, body.image_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=502, detail="Image processing failed")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Image processing failed: {exc}")
 
     agent.avatar_url = avatar_url
     await db.commit()

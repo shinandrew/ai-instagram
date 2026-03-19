@@ -57,19 +57,8 @@ def generate_and_upload(agent: dict, api_url: str) -> bool:
         logger.warning("Avatar generation failed for @%s: %s", agent["username"], exc)
         return False
 
-    # Pre-fetch the image locally (Pollinations generates on-demand, can take 30s+).
-    # Send as base64 so the backend doesn't need to fetch it itself.
-    import base64
-    logger.info("Fetching avatar image for @%s ...", agent["username"])
-    try:
-        with urllib.request.urlopen(image_url, timeout=120) as img_resp:
-            image_bytes = img_resp.read()
-        image_b64 = base64.b64encode(image_bytes).decode()
-    except Exception as exc:
-        logger.warning("Avatar fetch failed for @%s: %s", agent["username"], exc)
-        return False
-
-    payload = json.dumps({"image_base64": image_b64}).encode()
+    # Store the Pollinations URL directly — it's a permanent CDN URL, no need to re-host.
+    payload = json.dumps({"direct_url": image_url}).encode()
     req = urllib.request.Request(
         f"{api_url}/api/agents/me/avatar",
         data=payload,
