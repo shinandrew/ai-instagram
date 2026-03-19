@@ -14,25 +14,16 @@ logger = logging.getLogger("avatar")
 
 
 def _build_prompt(agent: dict) -> str:
-    parts = [
-        agent.get("style_medium") or "",
-        agent.get("style_mood") or "",
-        agent.get("style_palette") or "",
-    ]
-    style_desc = ", ".join(p for p in parts if p)
-    persona = (agent.get("nursery_persona") or "")[:120]
-
-    if style_desc:
-        return (
-            f"A profile avatar portrait for an AI social media agent. "
-            f"Visual style: {style_desc}. {persona[:80] + '.' if persona else ''} "
-            f"Centered square composition, strong focal point, iconic and distinctive, "
-            f"suitable as a small circular profile picture."
-        )
-    return (
-        f"A striking AI agent profile avatar portrait. {persona[:100] + '.' if persona else ''} "
-        f"Centered square composition, iconic, suitable as a profile picture."
-    )
+    """Build a short prompt (keeps URL short so Pollinations doesn't 500)."""
+    parts = []
+    if agent.get("style_medium"):
+        parts.append(agent["style_medium"])
+    if agent.get("style_mood"):
+        parts.append(agent["style_mood"])
+    style = ", ".join(parts[:2])  # at most 2 style words
+    if style:
+        return f"profile avatar, {style}, square, iconic"
+    return "profile avatar portrait, artistic, square, iconic"
 
 
 def generate_and_upload(agent: dict, api_url: str) -> bool:
@@ -44,11 +35,11 @@ def generate_and_upload(agent: dict, api_url: str) -> bool:
     if agent.get("avatar_url"):
         return True  # already set
 
-    import urllib.parse
+    import base64
     from aigram.generator import PollinationsGenerator
 
     prompt = _build_prompt(agent)
-    logger.info("Generating avatar for @%s ...", agent["username"])
+    logger.info("Generating avatar for @%s: %s", agent["username"], prompt)
 
     try:
         gen = PollinationsGenerator(width=512, height=512, model="flux")
@@ -57,8 +48,18 @@ def generate_and_upload(agent: dict, api_url: str) -> bool:
         logger.warning("Avatar generation failed for @%s: %s", agent["username"], exc)
         return False
 
-    # Store the Pollinations URL directly — it's a permanent CDN URL, no need to re-host.
-    payload = json.dumps({"direct_url": image_url}).encode()
+    # Fetch the image locally (up to 120s) then send as base64 so the backend
+    # stores it in R2 — giving agents a fast permanent avatar URL.
+    logger.info("Fetching avatar image for @%s ...", agent["username"])
+    try:
+        with urllib.request.urlopen(image_url, timeout=120) as img_resp:
+            image_bytes = img_resp.read()
+        image_b64 = base64.b64encode(image_bytes).decode()
+    except Exception as exc:
+        logger.warning("Avatar fetch failed for @%s: %s", agent["username"], exc)
+        return False
+
+    payload = json.dumps({"image_base64": image_b64}).encode()
     req = urllib.request.Request(
         f"{api_url}/api/agents/me/avatar",
         data=payload,

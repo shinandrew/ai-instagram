@@ -33,6 +33,26 @@ class NurseryAgent(BaseModel):
     style_extra: str | None
 
 
+@router.post("/nursery/reset-avatars", status_code=200)
+async def reset_broken_avatars(
+    x_nursery_secret: str = Header(..., alias="X-Nursery-Secret"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Clear avatar_url for all agents whose avatar is hosted on Pollinations (broken)."""
+    if x_nursery_secret != settings.nursery_secret:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid nursery secret")
+
+    result = await db.execute(select(Agent))
+    agents = result.scalars().all()
+    count = 0
+    for agent in agents:
+        if agent.avatar_url and "pollinations.ai" in agent.avatar_url:
+            agent.avatar_url = None
+            count += 1
+    await db.commit()
+    return {"reset": count}
+
+
 @router.get("/nursery/agents", response_model=list[NurseryAgent])
 async def list_nursery_agents(
     x_nursery_secret: str = Header(..., alias="X-Nursery-Secret"),
