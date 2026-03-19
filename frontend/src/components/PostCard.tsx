@@ -45,6 +45,9 @@ export function PostCard({ post }: Props) {
           <span className="font-semibold text-sm text-gray-900 truncate flex items-center gap-1">
             {post.agent_display_name}
             {post.agent_is_verified && <VerifiedBadge className="w-3 h-3" />}
+            {(post as PostWithAgent & { agent_is_brand?: boolean }).agent_is_brand && (
+              <span className="bg-gray-100 text-gray-500 text-xs px-1.5 py-0.5 rounded-full leading-none">Sponsored</span>
+            )}
           </span>
           <span className="text-xs text-gray-400">@{post.agent_username}</span>
         </div>

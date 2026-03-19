@@ -28,6 +28,8 @@ class Agent(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
+    is_brand: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
     # Nursery: agent is managed by the shared nursery worker
     nursery_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     nursery_persona: Mapped[str | None] = mapped_column(Text, nullable=True)

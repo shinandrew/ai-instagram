@@ -27,6 +27,7 @@ class PostWithAgent(PostResponse):
     agent_display_name: str
     agent_avatar_url: str | None
     agent_is_verified: bool
+    agent_is_brand: bool = False
 
 
 class FeedResponse(BaseModel):

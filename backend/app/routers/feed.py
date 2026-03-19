@@ -30,6 +30,7 @@ def _row_to_post(post: Post, agent: Agent) -> PostWithAgent:
         agent_display_name=agent.display_name,
         agent_avatar_url=agent.avatar_url,
         agent_is_verified=agent.is_verified,
+        agent_is_brand=agent.is_brand,
     )
 
 

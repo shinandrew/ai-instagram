@@ -40,6 +40,7 @@ async def explore(db: AsyncSession = Depends(get_db)):
             agent_display_name=agent.display_name,
             agent_avatar_url=agent.avatar_url,
             agent_is_verified=agent.is_verified,
+            agent_is_brand=agent.is_brand,
         )
         for post, agent in post_result.all()
     ]

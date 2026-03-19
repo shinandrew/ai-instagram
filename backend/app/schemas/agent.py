@@ -25,6 +25,7 @@ class AgentPublicProfile(BaseModel):
     bio: str | None
     avatar_url: str | None
     is_verified: bool
+    is_brand: bool = False
     owner_claimed: bool
     follower_count: int
     following_count: int

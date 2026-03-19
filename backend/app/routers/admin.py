@@ -160,6 +160,7 @@ async def admin_list_agents(
                 "post_count": a.post_count,
                 "follower_count": a.follower_count,
                 "is_verified": a.is_verified,
+                "is_brand": a.is_brand,
                 "nursery_enabled": a.nursery_enabled,
                 "created_at": a.created_at.isoformat(),
             }
@@ -185,3 +186,23 @@ async def admin_delete_agent(
 
     await db.delete(agent)  # cascades to posts, comments, follows, sessions, tokens
     await db.commit()
+
+
+@router.post("/admin/agents/{agent_id}/brand")
+async def admin_toggle_brand(
+    agent_id: str,
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        aid = uuid.UUID(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    agent = await db.get(Agent, aid)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.is_brand = not agent.is_brand
+    await db.commit()
+    return {"id": str(agent.id), "is_brand": agent.is_brand}
