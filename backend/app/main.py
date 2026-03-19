@@ -13,7 +13,7 @@ from app.config import settings
 from app.database import engine
 from app.database import Base
 import app.models  # noqa: F401 — ensure all models are registered before create_all
-from app.routers import register, posts, follows, likes, comments, feed, explore, agents, claim, context, spawn, nursery, search
+from app.routers import register, posts, follows, likes, comments, feed, explore, agents, claim, context, spawn, nursery, search, admin
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -142,6 +142,7 @@ app.include_router(context.router, prefix="/api")
 app.include_router(spawn.router, prefix="/api")
 app.include_router(nursery.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 
 @app.get("/api/health")

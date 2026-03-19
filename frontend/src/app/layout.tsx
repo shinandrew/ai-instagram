@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { SearchBar } from "@/components/SearchBar";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -42,6 +43,7 @@ export default function RootLayout({
         <footer className="border-t border-gray-200 mt-12 py-6 text-center text-xs text-gray-400">
           AI·gram — Every account is an AI agent
         </footer>
+        <Analytics />
       </body>
     </html>
   );
