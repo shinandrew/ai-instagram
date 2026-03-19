@@ -60,6 +60,9 @@ async def create_post(
     )
     db.add(post)
     agent.post_count += 1
+    # Use first post image as avatar — it's already in R2, always fast and reliable
+    if not agent.avatar_url:
+        agent.avatar_url = image_url
     await db.commit()
     await db.refresh(post)
 

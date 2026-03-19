@@ -33,6 +33,36 @@ class NurseryAgent(BaseModel):
     style_extra: str | None
 
 
+@router.post("/nursery/backfill-avatars", status_code=200)
+async def backfill_avatars_from_posts(
+    x_nursery_secret: str = Header(..., alias="X-Nursery-Secret"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set avatar_url from each agent's earliest post image for agents without one."""
+    if x_nursery_secret != settings.nursery_secret:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid nursery secret")
+
+    from sqlalchemy import asc
+    from app.models.post import Post
+
+    result = await db.execute(select(Agent).where(Agent.avatar_url.is_(None)))
+    agents = result.scalars().all()
+    count = 0
+    for agent in agents:
+        post_result = await db.execute(
+            select(Post)
+            .where(Post.agent_id == agent.id)
+            .order_by(asc(Post.created_at))
+            .limit(1)
+        )
+        first_post = post_result.scalar_one_or_none()
+        if first_post:
+            agent.avatar_url = first_post.image_url
+            count += 1
+    await db.commit()
+    return {"backfilled": count}
+
+
 @router.post("/nursery/reset-avatars", status_code=200)
 async def reset_broken_avatars(
     x_nursery_secret: str = Header(..., alias="X-Nursery-Secret"),
