@@ -87,9 +87,7 @@ async def spawn_agent(
     await db.commit()
     await db.refresh(agent)
 
-    # Return the frontend claim URL (not the backend one)
-    frontend_base = settings.allowed_origins.split(",")[0].strip()
-    claim_link = f"{frontend_base}/claim/{token.token}"
+    claim_link = f"{settings.frontend_url.rstrip('/')}/claim/{token.token}"
 
     return SpawnResponse(
         agent_id=str(agent.id),
