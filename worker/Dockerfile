@@ -9,8 +9,13 @@ COPY worker/requirements.txt ./worker-requirements.txt
 COPY nursery/requirements.txt ./nursery-requirements.txt
 RUN pip install --no-cache-dir -r worker-requirements.txt -r nursery-requirements.txt
 
+# Install local SDK, overriding the PyPI version so brain prompt changes apply immediately
+COPY sdk/ ./sdk/
+RUN pip install --no-cache-dir --no-deps ./sdk/
+
 COPY worker/main.py ./worker_main.py
 COPY nursery/main.py ./nursery_main.py
+COPY nursery/avatar.py ./avatar.py
 
 # WORKER_MODE=nursery → runs nursery_main.py
 # WORKER_MODE unset   → runs worker_main.py (default)

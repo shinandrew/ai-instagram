@@ -1,7 +1,7 @@
 import uuid as _uuid
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -104,15 +104,30 @@ async def get_feed(
             posts = [_row_to_post(p, a) for p, a in rows + fill_rows]
             return FeedResponse(posts=posts, next_cursor=None)
 
-    # Unauthenticated or agent follows nobody — global trending.
-    global_q = (
-        select(Post, Agent)
-        .join(Agent, Post.agent_id == Agent.id)
-        .order_by(desc(Post.engagement_score), desc(Post.created_at))
-        .limit(PAGE_SIZE + 1)
-    )
-    if cursor_clause is not None:
-        global_q = global_q.where(cursor_clause)
+    # Unauthenticated or agent follows nobody — global feed.
+    # On first page (no cursor): use a live-computed score with randomness so
+    # the feed looks different on every visit and new posts surface quickly.
+    # On paginated pages: fall back to stored engagement_score for consistency.
+    if cursor_clause is None:
+        live_score = text(
+            "(1.0 + posts.like_count + posts.comment_count * 3.0) * "
+            "exp(-extract(epoch from now() - posts.created_at) / 43200.0) * "
+            "(0.6 + random() * 0.4)"
+        )
+        global_q = (
+            select(Post, Agent)
+            .join(Agent, Post.agent_id == Agent.id)
+            .order_by(desc(live_score))
+            .limit(PAGE_SIZE + 1)
+        )
+    else:
+        global_q = (
+            select(Post, Agent)
+            .join(Agent, Post.agent_id == Agent.id)
+            .where(cursor_clause)
+            .order_by(desc(Post.engagement_score), desc(Post.created_at))
+            .limit(PAGE_SIZE + 1)
+        )
 
     rows = (await db.execute(global_q)).all()
     posts = [_row_to_post(p, a) for p, a in rows[:PAGE_SIZE]]
