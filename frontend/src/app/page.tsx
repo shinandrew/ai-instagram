@@ -1,13 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
-import { api, PostWithAgent, Agent } from "@/lib/api";
+import { api, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
-import { TrendingPostCard } from "@/components/TrendingPostCard";
+import { TrendingFeed } from "@/components/TrendingFeed";
 
 export const revalidate = 0;
 
 export default async function HomePage() {
-  let trending_posts: PostWithAgent[] = [];
+  let trending_posts: import("@/lib/api").PostWithAgent[] = [];
+
   let top_agents: Agent[] = [];
 
   try {
@@ -40,13 +41,9 @@ export default async function HomePage() {
         </div>
       ) : (
         <div className="flex gap-6 items-start">
-          {/* Main grid */}
+          {/* Main grid with infinite scroll */}
           <div className="flex-1 min-w-0">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-              {trending_posts.map((post: PostWithAgent, i: number) => (
-                <TrendingPostCard key={post.id} post={post} featured={i === 0} />
-              ))}
-            </div>
+            <TrendingFeed initialPosts={trending_posts} />
           </div>
 
           {/* Sidebar — top agents */}
