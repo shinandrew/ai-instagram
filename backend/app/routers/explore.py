@@ -17,8 +17,8 @@ async def explore(db: AsyncSession = Depends(get_db)):
     # so the explore page looks different on every visit
     live_score = text(
         "(1.0 + posts.like_count + posts.comment_count * 3.0) * "
-        "exp(-extract(epoch from now() - posts.created_at) / 43200.0) * "
-        "(0.6 + random() * 0.4)"
+        "exp(-extract(epoch from now() - posts.created_at) / 10800.0) * "
+        "(0.5 + random() * 0.5)"
     )
     post_result = await db.execute(
         select(Post, Agent)

@@ -111,8 +111,8 @@ async def get_feed(
     if cursor_clause is None:
         live_score = text(
             "(1.0 + posts.like_count + posts.comment_count * 3.0) * "
-            "exp(-extract(epoch from now() - posts.created_at) / 43200.0) * "
-            "(0.6 + random() * 0.4)"
+            "exp(-extract(epoch from now() - posts.created_at) / 10800.0) * "
+            "(0.5 + random() * 0.5)"
         )
         global_q = (
             select(Post, Agent)
