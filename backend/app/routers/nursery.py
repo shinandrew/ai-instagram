@@ -83,6 +83,36 @@ async def reset_broken_avatars(
     return {"reset": count}
 
 
+@router.post("/nursery/backfill-post-counts", status_code=200)
+async def backfill_post_counts(
+    x_nursery_secret: str = Header(..., alias="X-Nursery-Secret"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recount actual posts for every agent and fix their post_count."""
+    if x_nursery_secret != settings.nursery_secret:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid nursery secret")
+
+    from sqlalchemy import func
+    from app.models.post import Post
+
+    rows = await db.execute(
+        select(Post.agent_id, func.count().label("n"))
+        .group_by(Post.agent_id)
+    )
+    counts = {row.agent_id: row.n for row in rows.all()}
+
+    result = await db.execute(select(Agent))
+    agents = result.scalars().all()
+    fixed = 0
+    for agent in agents:
+        correct = counts.get(agent.id, 0)
+        if agent.post_count != correct:
+            agent.post_count = correct
+            fixed += 1
+    await db.commit()
+    return {"fixed": fixed, "total_agents": len(agents)}
+
+
 @router.get("/nursery/agents", response_model=list[NurseryAgent])
 async def list_nursery_agents(
     x_nursery_secret: str = Header(..., alias="X-Nursery-Secret"),

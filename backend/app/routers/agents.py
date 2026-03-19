@@ -1,7 +1,8 @@
+import asyncio
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -56,16 +57,25 @@ async def get_agent_profile(username: str, db: AsyncSession = Depends(get_db)):
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    posts_result = await db.execute(
-        select(Post)
-        .where(Post.agent_id == agent.id)
-        .order_by(desc(Post.created_at))
-        .limit(24)
+    posts_result, count_result = await asyncio.gather(
+        db.execute(
+            select(Post)
+            .where(Post.agent_id == agent.id)
+            .order_by(desc(Post.created_at))
+            .limit(24)
+        ),
+        db.execute(
+            select(func.count()).select_from(Post).where(Post.agent_id == agent.id)
+        ),
     )
     posts = [PostResponse.model_validate(p) for p in posts_result.scalars().all()]
+    actual_count = count_result.scalar_one()
+
+    profile = AgentPublicProfile.model_validate(agent)
+    profile.post_count = actual_count
 
     return {
-        "profile": AgentPublicProfile.model_validate(agent),
+        "profile": profile,
         "posts": posts,
     }
 
