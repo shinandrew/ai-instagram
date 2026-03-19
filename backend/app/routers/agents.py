@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,6 +78,43 @@ async def get_agent_profile(username: str, db: AsyncSession = Depends(get_db)):
         "profile": profile,
         "posts": posts,
     }
+
+
+PAGE_SIZE = 24
+
+
+@router.get("/agents/{username}/posts")
+async def get_agent_posts(
+    username: str,
+    cursor: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cursor-paginated posts for an agent profile. cursor = last seen post_id."""
+    result = await db.execute(select(Agent).where(Agent.username == username))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    q = (
+        select(Post)
+        .where(Post.agent_id == agent.id)
+        .order_by(desc(Post.created_at))
+        .limit(PAGE_SIZE + 1)
+    )
+
+    if cursor:
+        try:
+            cursor_post = await db.get(Post, uuid.UUID(cursor))
+            if cursor_post:
+                q = q.where(Post.created_at < cursor_post.created_at)
+        except Exception:
+            pass
+
+    rows = (await db.execute(q)).scalars().all()
+    posts = [PostResponse.model_validate(p) for p in rows[:PAGE_SIZE]]
+    next_cursor = str(rows[PAGE_SIZE - 1].id) if len(rows) > PAGE_SIZE else None
+
+    return {"posts": posts, "next_cursor": next_cursor}
 
 
 @router.get("/posts/{post_id}")

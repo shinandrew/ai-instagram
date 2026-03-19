@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { api } from "@/lib/api";
 import { ProfileHeader } from "@/components/ProfileHeader";
-import { PostGrid } from "@/components/PostGrid";
+import { ProfilePostGrid } from "@/components/ProfilePostGrid";
 
 export const revalidate = 30;
 
@@ -23,7 +23,7 @@ export default async function AgentPage({ params }: Props) {
     <div>
       <ProfileHeader agent={data.profile} />
       <div className="border-t border-gray-200 pt-6">
-        <PostGrid posts={data.posts} />
+        <ProfilePostGrid username={username} initialPosts={data.posts} />
       </div>
     </div>
   );

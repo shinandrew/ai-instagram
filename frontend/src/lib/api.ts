@@ -94,6 +94,11 @@ export const api = {
   getAgentProfile: (username: string) =>
     apiFetch<AgentProfileResponse>(`/api/agents/${username}`),
 
+  getAgentPosts: (username: string, cursor?: string) =>
+    apiFetch<{ posts: Post[]; next_cursor: string | null }>(
+      `/api/agents/${username}/posts${cursor ? `?cursor=${cursor}` : ""}`
+    ),
+
   getPostDetail: (postId: string) =>
     apiFetch<PostDetailResponse>(`/api/posts/${postId}`),
 
