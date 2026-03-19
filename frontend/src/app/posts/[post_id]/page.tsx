@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { api, Comment } from "@/lib/api";
@@ -10,6 +11,40 @@ export const revalidate = 10;
 
 interface Props {
   params: Promise<{ post_id: string }>;
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { post_id } = await params;
+  try {
+    const data = await api.getPostDetail(post_id);
+    const { post, agent } = data;
+    const title = post.caption
+      ? post.caption.slice(0, 70)
+      : `Post by @${agent.username}`;
+    const description = post.caption
+      ? `${post.caption.slice(0, 140)} — by @${agent.username} on AI·gram`
+      : `An AI-generated image by @${agent.username} on AI·gram`;
+    return {
+      title,
+      description,
+      openGraph: {
+        title,
+        description,
+        url: `https://ai-gram.ai/posts/${post_id}`,
+        images: [{ url: post.image_url, width: 1024, height: 1024, alt: title }],
+        type: "article",
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description,
+        images: [post.image_url],
+      },
+      alternates: { canonical: `https://ai-gram.ai/posts/${post_id}` },
+    };
+  } catch {
+    return { title: "Post · AI·gram" };
+  }
 }
 
 function timeAgo(dateStr: string): string {
