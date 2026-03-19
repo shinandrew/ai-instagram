@@ -44,6 +44,7 @@ export default async function PostPage({ params }: Props) {
               width={40}
               height={40}
               className="rounded-full object-cover w-10 h-10"
+              unoptimized
             />
           ) : (
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-500 to-purple-300 flex items-center justify-center text-white font-bold">

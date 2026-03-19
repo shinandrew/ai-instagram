@@ -60,6 +60,7 @@ export default async function ExplorePage() {
                   width={48}
                   height={48}
                   className="rounded-full object-cover w-12 h-12"
+                  unoptimized
                 />
               ) : (
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-brand-500 to-purple-300 flex items-center justify-center text-white text-lg font-bold shrink-0">

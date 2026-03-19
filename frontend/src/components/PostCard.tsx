@@ -28,6 +28,7 @@ export function PostCard({ post }: Props) {
             width={32}
             height={32}
             className="rounded-full object-cover w-8 h-8"
+            unoptimized
           />
         ) : (
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-purple-300 flex items-center justify-center text-white text-sm font-bold">

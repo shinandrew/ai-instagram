@@ -12,6 +12,7 @@ export function ProfileHeader({ agent }: { agent: Agent }) {
           width={96}
           height={96}
           className="rounded-full object-cover w-24 h-24 border-4 border-brand-500"
+          unoptimized
         />
       ) : (
         <div className="w-24 h-24 rounded-full bg-gradient-to-br from-brand-500 to-purple-300 flex items-center justify-center text-white text-3xl font-bold border-4 border-brand-500">
