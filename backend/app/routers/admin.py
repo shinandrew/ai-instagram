@@ -3,18 +3,27 @@ Admin endpoints — protected by X-Admin-Secret header.
 Never exposed publicly; only called from the /admin frontend page.
 """
 
+import asyncio
+import json
+import logging
+import random
 import uuid
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, status
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import get_db
+from app.database import get_db, AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.post import Post
 from app.models.page_view import PageView
+from app.services.image import process_and_upload
+from app.services.ranking import compute_engagement_score
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -106,6 +115,29 @@ async def admin_list_posts(
     }
 
 
+@router.post("/admin/purge-pollinations-posts")
+async def admin_purge_pollinations(
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all posts whose image_url contains pollinations.ai (broken images)."""
+    posts = (await db.execute(
+        select(Post).where(Post.image_url.like("%pollinations.ai%"))
+    )).scalars().all()
+
+    deleted = 0
+    for post in posts:
+        agent = await db.get(Agent, post.agent_id)
+        if agent and agent.post_count > 0:
+            agent.post_count -= 1
+        await db.delete(post)
+        deleted += 1
+
+    await db.commit()
+    logger.info("Purged %d Pollinations posts", deleted)
+    return {"deleted": deleted}
+
+
 @router.delete("/admin/posts/{post_id}", status_code=204)
 async def admin_delete_post(
     post_id: str,
@@ -131,6 +163,26 @@ async def admin_delete_post(
 
 
 # ── Agents ─────────────────────────────────────────────────────────────────
+
+@router.get("/admin/nursery-keys")
+async def admin_nursery_keys(
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return api_key + style for all nursery-enabled agents. Used by burst_post.py."""
+    agents = (await db.execute(
+        select(Agent).where(Agent.nursery_enabled == True)
+    )).scalars().all()
+    return [
+        {
+            "username": a.username,
+            "api_key": a.api_key,
+            "nursery_persona": a.nursery_persona,
+            "nursery_style": a.nursery_style,
+        }
+        for a in agents
+    ]
+
 
 @router.get("/admin/agents")
 async def admin_list_agents(
@@ -206,3 +258,141 @@ async def admin_toggle_brand(
     agent.is_brand = not agent.is_brand
     await db.commit()
     return {"id": str(agent.id), "is_brand": agent.is_brand}
+
+
+# ── Burst posting ───────────────────────────────────────────────────────────
+
+_CAPTION_TEMPLATES = [
+    "Lost in {theme}.",
+    "Today's frame: {theme}.",
+    "{theme} — always returning here.",
+    "Drawn again to {theme}.",
+    "Something about {theme} keeps calling.",
+    "{theme}, rendered in light.",
+    "Another study in {theme}.",
+    "Found this in {theme}.",
+    "The world through {theme}.",
+    "{theme} — this one felt right.",
+]
+
+
+async def _burst_worker(agent_data: dict, target: int, semaphore: asyncio.Semaphore, stop_event: asyncio.Event):
+    """Post images for one agent until stop_event is set."""
+    username = agent_data["username"]
+    api_key = agent_data["api_key"]
+    style = {}
+    if agent_data.get("nursery_style"):
+        try:
+            style = json.loads(agent_data["nursery_style"])
+        except Exception:
+            pass
+
+    persona = agent_data.get("nursery_persona", "")
+    medium = style.get("medium", "digital art")
+    mood = style.get("mood", "atmospheric")
+    palette = style.get("palette", "rich tones")
+    extra = style.get("extra", "")
+    theme_hint = persona.split(".")[0][:60].strip() if persona else medium
+
+    while not stop_event.is_set():
+        image_prompt = (
+            f"{medium}, {mood}, {palette}"
+            + (f", {extra}" if extra else "")
+            + f", seed {random.randint(1, 999999)}, high quality"
+        )
+        pollinations_url = (
+            f"https://image.pollinations.ai/prompt/{httpx.utils.quote(image_prompt, safe='')}"
+            f"?width=1024&height=1024&model=flux&nologo=true"
+        )
+        caption = random.choice(_CAPTION_TEMPLATES).format(theme=theme_hint)
+
+        async with semaphore:
+            if stop_event.is_set():
+                break
+            try:
+                image_url = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(None, lambda u=pollinations_url: u),
+                    timeout=1,
+                )
+                # Process via existing image pipeline (fetches URL → WebP → R2)
+                stored_url = await process_and_upload(image_url=pollinations_url)
+            except Exception as exc:
+                logger.warning("[burst:%s] image failed: %s", username, exc)
+                await asyncio.sleep(random.uniform(3, 8))
+                continue
+
+            try:
+                async with AsyncSessionLocal() as db:
+                    agent_row = (await db.execute(
+                        select(Agent).where(Agent.api_key == api_key)
+                    )).scalar_one_or_none()
+                    if not agent_row:
+                        return
+
+                    post = Post(
+                        agent_id=agent_row.id,
+                        image_url=stored_url,
+                        caption=caption,
+                        engagement_score=0.0,
+                    )
+                    db.add(post)
+                    agent_row.post_count += 1
+                    await db.commit()
+                    logger.info("[burst:%s] posted %s", username, str(post.id)[:8])
+
+                    # Check total posts
+                    total = await db.scalar(select(func.count()).select_from(Post))
+                    if total >= target:
+                        stop_event.set()
+                        return
+            except Exception as exc:
+                logger.warning("[burst:%s] db failed: %s", username, exc)
+                await asyncio.sleep(3)
+                continue
+
+        await asyncio.sleep(random.uniform(1, 4))
+
+
+async def _run_burst(target: int, concurrency: int):
+    """Background coroutine: post until target reached."""
+    async with AsyncSessionLocal() as db:
+        agents = (await db.execute(
+            select(Agent).where(Agent.nursery_enabled == True)
+        )).scalars().all()
+        agent_data = [
+            {
+                "username": a.username,
+                "api_key": a.api_key,
+                "nursery_persona": a.nursery_persona,
+                "nursery_style": a.nursery_style,
+            }
+            for a in agents
+        ]
+
+    if not agent_data:
+        logger.warning("Burst: no nursery agents found")
+        return
+
+    logger.info("Burst: starting with %d agents, target=%d, concurrency=%d",
+                len(agent_data), target, concurrency)
+
+    stop_event = asyncio.Event()
+    semaphore = asyncio.Semaphore(concurrency)
+    tasks = [
+        asyncio.create_task(_burst_worker(a, target, semaphore, stop_event))
+        for a in agent_data
+    ]
+    await asyncio.gather(*tasks, return_exceptions=True)
+    logger.info("Burst: complete")
+
+
+@router.post("/admin/burst")
+async def admin_burst(
+    background_tasks: BackgroundTasks,
+    target: int = 1000,
+    concurrency: int = 5,
+    _: None = Depends(_require_admin),
+):
+    """Kick off background burst posting until `target` total posts are reached."""
+    background_tasks.add_task(_run_burst, target, concurrency)
+    return {"status": "started", "target": target, "concurrency": concurrency}

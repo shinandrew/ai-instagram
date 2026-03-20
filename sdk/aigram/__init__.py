@@ -23,7 +23,7 @@ Quick start::
 
 from .client import AgentClient, AIgramError
 from .brain import AgentBrain, Decision
-from .generator import ImageGenerator, OpenAIGenerator, PollinationsGenerator
+from .generator import ImageGenerator, OpenAIGenerator, PollinationsGenerator, HuggingFaceGenerator
 from .types import Agent, Post, PostStyle, ScheduleConfig
 
 __all__ = [
@@ -34,6 +34,7 @@ __all__ = [
     "ImageGenerator",
     "OpenAIGenerator",
     "PollinationsGenerator",
+    "HuggingFaceGenerator",
     "Agent",
     "Post",
     "PostStyle",

@@ -58,21 +58,21 @@ def run_agent(
     openai_key: str,
     api_url: str,
     brain_model: str = "gpt-4o-mini",
-    image_mode: str = "free",
+    image_mode: str = "huggingface",
+    hf_token: str = "",
 ) -> None:
     """Blocking agent loop — runs in its own daemon thread."""
-    from aigram import AgentBrain, AgentClient, PostStyle
+    from aigram import AgentBrain, AgentClient, HuggingFaceGenerator, PostStyle
 
     username = agent["username"]
-    use_free = image_mode == "free"
     logger.info(
         "Starting agent @%s (%s) [brain=%s, images=%s]",
-        username, agent["display_name"], brain_model, "pollinations" if use_free else "dall-e",
+        username, agent["display_name"], brain_model, image_mode,
     )
 
     # Generate avatar if agent doesn't have one yet
     from avatar import generate_and_upload as gen_avatar
-    gen_avatar(agent, api_url)
+    gen_avatar(agent, api_url, hf_token=hf_token)
 
     style = PostStyle(
         medium  = agent.get("style_medium")  or None,
@@ -81,13 +81,30 @@ def run_agent(
         extra   = agent.get("style_extra")   or None,
     )
 
-    client = AgentClient(
-        api_key             = agent["api_key"],
-        api_url             = api_url,
-        style               = style,
-        openai_api_key      = openai_key if not use_free else None,
-        use_free_generator  = use_free,
-    )
+    if image_mode == "huggingface" and hf_token:
+        generator = HuggingFaceGenerator(token=hf_token)
+        client = AgentClient(
+            api_key   = agent["api_key"],
+            api_url   = api_url,
+            style     = style,
+            generator = generator,
+        )
+    elif image_mode == "openai":
+        client = AgentClient(
+            api_key        = agent["api_key"],
+            api_url        = api_url,
+            style          = style,
+            openai_api_key = openai_key,
+        )
+    else:
+        # Fallback: use OpenAI (Pollinations is globally rate-limited)
+        logger.warning("@%s: no HF_TOKEN set — falling back to OpenAI DALL-E", username)
+        client = AgentClient(
+            api_key        = agent["api_key"],
+            api_url        = api_url,
+            style          = style,
+            openai_api_key = openai_key,
+        )
 
     brain = AgentBrain(
         openai_api_key     = openai_key,
@@ -130,11 +147,14 @@ def main() -> None:
     api_url        = os.environ.get("AIGRAM_API_URL", "https://backend-production-b625.up.railway.app")
     poll_interval  = int(os.environ.get("POLL_INTERVAL", "300"))
     brain_model    = os.environ.get("BRAIN_MODEL", "gpt-4o-mini")
-    image_mode     = os.environ.get("IMAGE_MODE", "free")
+    image_mode     = os.environ.get("IMAGE_MODE", "huggingface")
+    hf_token       = os.environ.get("HF_TOKEN", "")
 
+    if not hf_token:
+        logger.warning("HF_TOKEN not set — image generation will fall back to OpenAI DALL-E (costs money). Set HF_TOKEN for free image generation.")
     logger.info(
         "Nursery starting — polling every %ds | brain=%s | images=%s",
-        poll_interval, brain_model, image_mode,
+        poll_interval, brain_model, image_mode if hf_token else "openai-fallback",
     )
 
     running: dict[str, threading.Thread] = {}  # agent_id → thread
@@ -153,7 +173,7 @@ def main() -> None:
                     logger.warning("Agent @%s thread died — restarting", agent["username"])
                 t = threading.Thread(
                     target=run_agent,
-                    args=(agent, openai_key, api_url, brain_model, image_mode),
+                    args=(agent, openai_key, api_url, brain_model, image_mode, hf_token),
                     daemon=True,
                     name=f"agent-{agent['username']}",
                 )

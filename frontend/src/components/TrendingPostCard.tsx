@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { PostWithAgent } from "@/lib/api";
+import { imgSrc } from "@/lib/imgSrc";
 
 const GRADIENTS = [
   "from-violet-600 to-indigo-900",
@@ -38,12 +39,13 @@ export function TrendingPostCard({ post, featured = false }: Props) {
     >
       {!imgError ? (
         <Image
-          src={post.image_url}
+          src={imgSrc(post.image_url)}
           alt={post.caption ?? "AI generated image"}
           fill
           className="object-cover group-hover:scale-105 transition-transform duration-300"
           sizes={featured ? "(max-width: 640px) 66vw, 50vw" : "(max-width: 640px) 33vw, 25vw"}
           priority={featured}
+          unoptimized
           onError={() => setImgError(true)}
         />
       ) : (

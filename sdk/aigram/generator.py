@@ -2,9 +2,10 @@
 Image generation backends.
 
 Supported:
-  - openai     — DALL·E 3 via OpenAI API (default, best quality)
-  - pollinations— Pollinations.ai free endpoint (no API key needed)
-  - url         — Pass a pre-generated image URL directly (BYO generator)
+  - openai        — DALL·E 3 via OpenAI API (default, best quality)
+  - huggingface   — FLUX.1-schnell via HuggingFace Inference API (free, recommended)
+  - pollinations  — Pollinations.ai free endpoint (deprecated — rate-limited)
+  - url           — Pass a pre-generated image URL directly (BYO generator)
 """
 
 from __future__ import annotations
@@ -14,10 +15,16 @@ from typing import Optional
 
 
 class ImageGenerator:
-    """Base class. Returns an image URL or base64 bytes."""
+    """Base class. Returns an image URL or base64 string."""
+
+    generates_url: bool = True
+    """
+    True  → generate() returns a public image URL
+    False → generate() returns a base64-encoded image string
+    """
 
     def generate(self, prompt: str) -> str:
-        """Return a publicly accessible image URL for the given prompt."""
+        """Return an image URL (or base64 string) for the given prompt."""
         raise NotImplementedError
 
 
@@ -100,6 +107,77 @@ class PollinationsGenerator(ImageGenerator):
         encoded = urllib.parse.quote(prompt)
         qs = urllib.parse.urlencode(params)
         return f"{self.BASE}{encoded}?{qs}"
+
+
+class HuggingFaceGenerator(ImageGenerator):
+    """
+    Free image generation via HuggingFace Inference API (FLUX.1-schnell).
+
+    Requires a free HuggingFace account and User Access Token:
+      1. Create account at https://huggingface.co
+      2. Get token at https://huggingface.co/settings/tokens
+      3. Pass token here or set HF_TOKEN environment variable.
+
+    Returns base64-encoded PNG bytes (not a URL).
+    """
+
+    generates_url: bool = False
+    HF_API = "https://api-inference.huggingface.co/models/"
+
+    def __init__(
+        self,
+        token: str,
+        model: str = "black-forest-labs/FLUX.1-schnell",
+        width: int = 1024,
+        height: int = 1024,
+        max_retries: int = 4,
+    ) -> None:
+        self._token = token
+        self._model = model
+        self._width = width
+        self._height = height
+        self._max_retries = max_retries
+
+    def generate(self, prompt: str) -> str:
+        """Fetch image from HF Inference API and return base64-encoded bytes."""
+        import base64
+        import json
+        import time
+        import urllib.error
+
+        url = f"{self.HF_API}{self._model}"
+        payload = json.dumps({
+            "inputs": prompt,
+            "parameters": {
+                "width": self._width,
+                "height": self._height,
+                "num_inference_steps": 4,
+                "guidance_scale": 0.0,
+            },
+        }).encode()
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Content-Type": "application/json",
+        }
+
+        for attempt in range(self._max_retries):
+            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    image_bytes = resp.read()
+                    return base64.b64encode(image_bytes).decode()
+            except urllib.error.HTTPError as e:
+                if e.code == 503:
+                    try:
+                        body = json.loads(e.read())
+                        wait = min(float(body.get("estimated_time", 20)), 60)
+                    except Exception:
+                        wait = 20
+                    if attempt < self._max_retries - 1:
+                        time.sleep(wait)
+                        continue
+                raise
+        raise RuntimeError("HuggingFace image generation failed after retries")
 
 
 def make_generator(

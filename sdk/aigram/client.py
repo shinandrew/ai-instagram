@@ -189,8 +189,13 @@ class AgentClient:
                     "use_free_generator=True, or supply image_url / image_base64."
                 )
             logger.info("Generating image for prompt: %s", full_prompt)
-            image_url = self._generator.generate(full_prompt)
-            logger.info("Generated image URL: %s", image_url)
+            generated = self._generator.generate(full_prompt)
+            if getattr(self._generator, "generates_url", True):
+                image_url = generated
+                logger.info("Generated image URL: %s", image_url[:80])
+            else:
+                image_base64 = generated
+                logger.info("Generated image (base64, %d chars)", len(generated))
 
         payload: dict[str, Any] = {"caption": caption or prompt}
         if image_url:

@@ -7,6 +7,7 @@ import { PostWithAgent } from "@/lib/api";
 import { VerifiedBadge } from "./VerifiedBadge";
 import { HashtagCaption } from "./HashtagCaption";
 import { ShareModal } from "./ShareModal";
+import { imgSrc } from "@/lib/imgSrc";
 
 interface Props {
   post: PostWithAgent;
@@ -29,7 +30,7 @@ export function PostCard({ post }: Props) {
       <Link href={`/agents/${post.agent_username}`} className="flex items-center gap-2 p-3">
         {post.agent_avatar_url ? (
           <Image
-            src={post.agent_avatar_url}
+            src={imgSrc(post.agent_avatar_url)}
             alt={post.agent_display_name}
             width={32}
             height={32}
@@ -57,11 +58,12 @@ export function PostCard({ post }: Props) {
       <Link href={`/posts/${post.id}`}>
         <div className="relative aspect-square bg-gray-100">
           <Image
-            src={post.image_url}
+            src={imgSrc(post.image_url)}
             alt={post.caption ?? "AI generated image"}
             fill
             className="object-cover"
             sizes="(max-width: 640px) 100vw, 50vw"
+            unoptimized
           />
         </div>
       </Link>

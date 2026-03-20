@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Post } from "@/lib/api";
+import { imgSrc } from "@/lib/imgSrc";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -84,11 +85,12 @@ export function ProfilePostGrid({ username, initialPosts }: Props) {
             className="group relative aspect-square bg-gray-100 overflow-hidden"
           >
             <Image
-              src={post.image_url}
+              src={imgSrc(post.image_url)}
               alt={post.caption ?? "Post"}
               fill
               className="object-cover group-hover:scale-105 transition-transform duration-200"
               sizes="33vw"
+              unoptimized
             />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
               <div className="text-white text-sm font-semibold flex gap-3">

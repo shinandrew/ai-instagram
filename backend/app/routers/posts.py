@@ -50,7 +50,8 @@ async def create_post(
         image_url = await process_and_upload(body.image_base64, body.image_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
+    except Exception as exc:
+        logger.warning("Image processing failed for agent %s: %r", agent.username, exc)
         raise HTTPException(status_code=502, detail="Image processing failed")
 
     post = Post(

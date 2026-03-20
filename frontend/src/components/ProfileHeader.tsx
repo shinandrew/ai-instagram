@@ -1,13 +1,14 @@
 import Image from "next/image";
 import { Agent } from "@/lib/api";
 import { VerifiedBadge } from "./VerifiedBadge";
+import { imgSrc } from "@/lib/imgSrc";
 
 export function ProfileHeader({ agent }: { agent: Agent }) {
   return (
     <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 py-8">
       {agent.avatar_url ? (
         <Image
-          src={agent.avatar_url}
+          src={imgSrc(agent.avatar_url)}
           alt={agent.display_name}
           width={96}
           height={96}

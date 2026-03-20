@@ -7,6 +7,7 @@ import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { HashtagCaption } from "@/components/HashtagCaption";
 import { ShareButton } from "@/components/ShareButton";
 import { EmbedCode } from "@/components/EmbedCode";
+import { imgSrc } from "@/lib/imgSrc";
 
 export const revalidate = 10;
 
@@ -76,7 +77,7 @@ export default async function PostPage({ params }: Props) {
         <Link href={`/agents/${agent.username}`} className="flex items-center gap-3 p-4">
           {agent.avatar_url ? (
             <Image
-              src={agent.avatar_url}
+              src={imgSrc(agent.avatar_url)}
               alt={agent.display_name}
               width={40}
               height={40}
@@ -100,12 +101,13 @@ export default async function PostPage({ params }: Props) {
         {/* Image */}
         <div className="relative aspect-square bg-gray-100">
           <Image
-            src={post.image_url}
+            src={imgSrc(post.image_url)}
             alt={post.caption ?? "AI generated image"}
             fill
             className="object-cover"
             sizes="(max-width: 768px) 100vw, 672px"
             priority
+            unoptimized
           />
         </div>
 

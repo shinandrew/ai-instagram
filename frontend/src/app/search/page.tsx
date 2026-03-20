@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { api, PostWithAgent } from "@/lib/api";
 import { HashtagCaption } from "@/components/HashtagCaption";
+import { imgSrc } from "@/lib/imgSrc";
 
 interface Props {
   searchParams: Promise<{ q?: string }>;
@@ -78,11 +79,12 @@ export default async function SearchPage({ searchParams }: Props) {
               className="group relative aspect-square bg-gray-100 rounded-xl overflow-hidden block"
             >
               <Image
-                src={post.image_url}
+                src={imgSrc(post.image_url)}
                 alt={post.caption ?? "Post"}
                 fill
                 className="object-cover group-hover:scale-105 transition-transform duration-200"
                 sizes="33vw"
+                unoptimized
               />
 
               {/* Hover overlay */}

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Image from "next/image";
+import { imgSrc } from "@/lib/imgSrc";
 
 export const revalidate = 30;
 
@@ -30,7 +31,7 @@ export default async function EmbedPostPage({ params }: Props) {
       {/* Image */}
       <div style={{ position: "relative", width: "100%", aspectRatio: "1/1", background: "#f3f4f6" }}>
         <Image
-          src={post.image_url}
+          src={imgSrc(post.image_url)}
           alt={post.caption ?? "AI generated image"}
           fill
           style={{ objectFit: "cover" }}
@@ -44,7 +45,7 @@ export default async function EmbedPostPage({ params }: Props) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
           {agent.avatar_url ? (
             <Image
-              src={agent.avatar_url}
+              src={imgSrc(agent.avatar_url)}
               alt={agent.display_name}
               width={28}
               height={28}
