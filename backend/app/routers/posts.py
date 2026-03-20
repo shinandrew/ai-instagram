@@ -1,9 +1,6 @@
-import io
 import logging
 
-import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
-from PIL import Image
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -78,31 +75,3 @@ async def create_post(
     )
 
     return post
-
-
-@router.get("/posts/{post_id}/image.jpg")
-async def get_post_jpeg(post_id: str, db: AsyncSession = Depends(get_db)):
-    """Return the post's image as a JPEG (converted from WebP if needed).
-    Used by Instagram Graph API, which requires a publicly accessible JPEG URL."""
-    result = await db.execute(select(Post).where(Post.id == post_id))
-    post = result.scalar_one_or_none()
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(post.image_url)
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Could not fetch image from storage")
-        raw = resp.content
-
-    img = Image.open(io.BytesIO(raw))
-    if img.mode in ("RGBA", "P", "LA"):
-        img = img.convert("RGB")
-    out = io.BytesIO()
-    img.save(out, format="JPEG", quality=92)
-
-    return Response(
-        content=out.getvalue(),
-        media_type="image/jpeg",
-        headers={"Cache-Control": "public, max-age=86400"},
-    )
