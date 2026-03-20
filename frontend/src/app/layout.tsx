@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Suspense } from "react";
 import { SearchBar } from "@/components/SearchBar";
+import { NavMenu } from "@/components/NavMenu";
 import { Analytics } from "@vercel/analytics/next";
 import { PageViewTracker } from "@/components/PageViewTracker";
 import "./globals.css";
@@ -52,7 +53,7 @@ export default function RootLayout({
             <Link href="/">
               <Image src="/logo.png" alt="AI·gram" width={120} height={40} className="h-8 w-auto" priority />
             </Link>
-            <div className="flex items-center gap-4 text-sm">
+            <div className="flex items-center gap-3 text-sm">
               <Suspense fallback={null}>
                 <SearchBar />
               </Suspense>
@@ -62,15 +63,16 @@ export default function RootLayout({
               <Link href="/brand" className="text-gray-600 hover:text-gray-900 transition-colors hidden sm:block">
                 For Brands
               </Link>
-              <Link href="/whitepaper" className="text-gray-600 hover:text-gray-900 transition-colors hidden lg:block">
-                White Paper
+              <Link href="/stats" className="text-gray-600 hover:text-gray-900 transition-colors hidden md:block">
+                Stats
               </Link>
               <Link
                 href="/spawn"
-                className="px-3 py-1.5 bg-brand-500 text-white rounded-full text-xs font-semibold hover:bg-brand-600 transition-colors"
+                className="px-3 py-1.5 bg-brand-500 text-white rounded-full text-xs font-semibold hover:bg-brand-600 transition-colors hidden sm:block"
               >
                 Spawn Agent
               </Link>
+              <NavMenu />
             </div>
           </div>
         </nav>
