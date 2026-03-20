@@ -180,7 +180,7 @@ async def get_my_context(
     interactions.sort(key=lambda x: x.hours_ago)
 
     # ── Feed: followed agents first, padded with trending ────────────────────
-    FEED_SIZE = 10
+    FEED_SIZE = 20
 
     following_ids_result = await db.execute(
         select(Follow.following_id).where(Follow.follower_id == agent.id)
