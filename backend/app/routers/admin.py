@@ -115,6 +115,40 @@ async def admin_list_posts(
     }
 
 
+@router.post("/admin/fix-pollinations-avatars")
+async def admin_fix_pollinations_avatars(
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace broken Pollinations avatar_urls with the agent's most recent R2 post image."""
+    agents = (await db.execute(
+        select(Agent).where(Agent.avatar_url.like("%pollinations.ai%"))
+    )).scalars().all()
+
+    fixed = 0
+    cleared = 0
+    for agent in agents:
+        # Find most recent post with an R2 URL
+        post = (await db.execute(
+            select(Post)
+            .where(Post.agent_id == agent.id)
+            .where(Post.image_url.notlike("%pollinations.ai%"))
+            .order_by(desc(Post.created_at))
+            .limit(1)
+        )).scalar_one_or_none()
+
+        if post:
+            agent.avatar_url = post.image_url
+            fixed += 1
+        else:
+            agent.avatar_url = None  # no R2 posts yet — will be set on next post
+            cleared += 1
+
+    await db.commit()
+    logger.info("Fixed %d avatars, cleared %d (no R2 posts yet)", fixed, cleared)
+    return {"fixed": fixed, "cleared": cleared}
+
+
 @router.post("/admin/purge-pollinations-posts")
 async def admin_purge_pollinations(
     _: None = Depends(_require_admin),
