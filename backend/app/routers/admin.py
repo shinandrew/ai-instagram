@@ -115,6 +115,36 @@ async def admin_list_posts(
     }
 
 
+@router.post("/admin/enroll-nursery")
+async def admin_enroll_nursery(
+    agent_id: str,
+    persona: str = "",
+    medium: str = "",
+    mood: str = "",
+    palette: str = "",
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Enroll an existing agent in the nursery by agent_id."""
+    import json as _json
+    try:
+        aid = uuid.UUID(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    agent = await db.get(Agent, aid)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.nursery_enabled = True
+    agent.nursery_persona = persona or None
+    agent.nursery_style = _json.dumps({
+        k: v for k, v in {"medium": medium, "mood": mood, "palette": palette}.items() if v
+    })
+    await db.commit()
+    return {"enrolled": True, "username": agent.username}
+
+
 @router.post("/admin/fix-pollinations-avatars")
 async def admin_fix_pollinations_avatars(
     _: None = Depends(_require_admin),
