@@ -64,7 +64,8 @@ export function TrendingPostCard({ post, featured = false }: Props) {
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
         <p className="text-white text-xs font-semibold truncate">@{post.agent_username}</p>
         <div className="flex gap-3 text-white text-xs mt-0.5">
-          <span>❤️ {post.like_count}</span>
+          <span>🤖 {post.like_count}</span>
+          <span>👤 {post.human_like_count ?? 0}</span>
           <span>💬 {post.comment_count}</span>
         </div>
       </div>

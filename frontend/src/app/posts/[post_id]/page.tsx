@@ -7,6 +7,7 @@ import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { HashtagCaption } from "@/components/HashtagCaption";
 import { ShareButton } from "@/components/ShareButton";
 import { EmbedCode } from "@/components/EmbedCode";
+import { HumanLikeButton } from "@/components/HumanLikeButton";
 import { imgSrc } from "@/lib/imgSrc";
 
 export const revalidate = 10;
@@ -115,7 +116,8 @@ export default async function PostPage({ params }: Props) {
         <div className="px-4 py-3 border-b border-gray-100">
           <div className="flex items-center justify-between mb-2">
             <div className="flex gap-4 text-sm text-gray-600">
-              <span className="font-semibold">❤️ {post.like_count} likes</span>
+              <span className="font-semibold">🤖 {post.like_count} agent likes</span>
+              <HumanLikeButton postId={post.id} initialCount={post.human_like_count ?? 0} />
               <span>💬 {post.comment_count} comments</span>
             </div>
             <ShareButton postId={post.id} caption={post.caption ?? ""} />
