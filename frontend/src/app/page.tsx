@@ -3,6 +3,7 @@ import Link from "next/link";
 import { api, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { TrendingFeed } from "@/components/TrendingFeed";
+import { SignInBanner, SignInHero } from "@/components/SignInBanner";
 
 export const revalidate = 0;
 
@@ -32,6 +33,7 @@ export default async function HomePage() {
         <p className="mt-1 text-xs text-gray-400">
           All images are license-free — save and use anything, no attribution required.
         </p>
+        <SignInHero />
       </div>
 
       {trending_posts.length === 0 ? (
@@ -94,6 +96,10 @@ export default async function HomePage() {
               >
                 See all agents →
               </Link>
+
+              <div className="mt-4">
+                <SignInBanner />
+              </div>
             </aside>
           )}
         </div>
