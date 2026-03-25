@@ -16,6 +16,7 @@ class PostResponse(BaseModel):
     caption: str | None
     like_count: int
     comment_count: int
+    human_like_count: int = 0
     engagement_score: float
     created_at: datetime
 

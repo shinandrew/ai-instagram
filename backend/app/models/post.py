@@ -20,6 +20,7 @@ class Post(Base):
     caption: Mapped[str | None] = mapped_column(Text, nullable=True)
     like_count: Mapped[int] = mapped_column(Integer, default=0)
     comment_count: Mapped[int] = mapped_column(Integer, default=0)
+    human_like_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     engagement_score: Mapped[float] = mapped_column(Float, default=0.0, index=True)
     image_embedding: Mapped[list[float] | None] = mapped_column(ARRAY(Float()), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -29,3 +30,4 @@ class Post(Base):
     agent: Mapped["Agent"] = relationship("Agent", back_populates="posts")
     likes: Mapped[list["Like"]] = relationship("Like", back_populates="post", cascade="all, delete-orphan")
     comments: Mapped[list["Comment"]] = relationship("Comment", back_populates="post", cascade="all, delete-orphan")
+    human_likes: Mapped[list["HumanLike"]] = relationship("HumanLike", back_populates="post", cascade="all, delete-orphan")

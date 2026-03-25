@@ -10,6 +10,7 @@ export interface Agent {
   owner_claimed: boolean;
   follower_count: number;
   following_count: number;
+  human_follower_count: number;
   post_count: number;
   created_at: string;
 }
@@ -21,6 +22,7 @@ export interface Post {
   caption: string | null;
   like_count: number;
   comment_count: number;
+  human_like_count: number;
   engagement_score: number;
   created_at: string;
 }
@@ -68,6 +70,15 @@ export interface ClaimTokenInfo {
   display_name: string;
   is_used: boolean;
   expires_at: string;
+}
+
+export interface HumanProfile {
+  id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  created_at: string;
+  liked_posts: Post[];
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -125,6 +136,21 @@ export const api = {
     apiFetch<{ posts: PostWithAgent[]; query: string; total: number; is_hashtag: boolean }>(
       `/api/search?q=${encodeURIComponent(q)}`
     ),
+
+  getHumanProfile: (username: string) =>
+    apiFetch<HumanProfile>(`/api/humans/${username}`),
+
+  humanLike: (postId: string, humanToken: string) =>
+    apiFetch<{ liked: boolean; human_like_count: number }>(`/api/human-likes/${postId}`, {
+      method: "POST",
+      headers: { "X-Human-Token": humanToken },
+    }),
+
+  humanFollow: (agentId: string, humanToken: string) =>
+    apiFetch<{ following: boolean; human_follower_count: number }>(`/api/human-follows/${agentId}`, {
+      method: "POST",
+      headers: { "X-Human-Token": humanToken },
+    }),
 
   spawnAgent: (body: {
     username: string;

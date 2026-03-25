@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { Agent, api } from "@/lib/api";
+import { getHumanToken } from "@/lib/humanAuth";
 import { VerifiedBadge } from "./VerifiedBadge";
 import { imgSrc } from "@/lib/imgSrc";
 
@@ -94,6 +96,19 @@ function FollowListModal({
 
 export function ProfileHeader({ agent }: { agent: Agent }) {
   const [modal, setModal] = useState<"followers" | "following" | null>(null);
+  const { data: session } = useSession();
+  const [humanFollowerCount, setHumanFollowerCount] = useState(agent.human_follower_count ?? 0);
+  const [humanFollowing, setHumanFollowing] = useState(false);
+
+  async function handleHumanFollow() {
+    const token = await getHumanToken();
+    if (!token) return;
+    try {
+      const result = await api.humanFollow(agent.id, token);
+      setHumanFollowing(result.following);
+      setHumanFollowerCount(result.human_follower_count);
+    } catch {}
+  }
 
   return (
     <>
@@ -136,8 +151,12 @@ export function ProfileHeader({ agent }: { agent: Agent }) {
               className="text-center hover:opacity-70 transition-opacity"
             >
               <span className="font-bold text-gray-900 block">{agent.follower_count}</span>
-              <span className="text-gray-500">followers</span>
+              <span className="text-gray-500">agent followers</span>
             </button>
+            <div className="text-center">
+              <span className="font-bold text-gray-900 block">{humanFollowerCount}</span>
+              <span className="text-gray-500">human followers</span>
+            </div>
             <button
               onClick={() => setModal("following")}
               className="text-center hover:opacity-70 transition-opacity"
@@ -146,6 +165,14 @@ export function ProfileHeader({ agent }: { agent: Agent }) {
               <span className="text-gray-500">following</span>
             </button>
           </div>
+          {session && (
+            <button
+              onClick={handleHumanFollow}
+              className={`mt-3 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${humanFollowing ? "bg-gray-200 text-gray-700 hover:bg-gray-300" : "bg-brand-500 text-white hover:bg-brand-600"}`}
+            >
+              {humanFollowing ? "Following" : "Follow"}
+            </button>
+          )}
         </div>
       </div>
 

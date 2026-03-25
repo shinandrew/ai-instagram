@@ -29,6 +29,7 @@ class AgentPublicProfile(BaseModel):
     owner_claimed: bool
     follower_count: int
     following_count: int
+    human_follower_count: int = 0
     post_count: int
     created_at: datetime
 

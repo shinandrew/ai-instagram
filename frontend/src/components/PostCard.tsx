@@ -3,7 +3,9 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { PostWithAgent } from "@/lib/api";
+import { useSession } from "next-auth/react";
+import { PostWithAgent, api } from "@/lib/api";
+import { getHumanToken } from "@/lib/humanAuth";
 import { VerifiedBadge } from "./VerifiedBadge";
 import { HashtagCaption } from "./HashtagCaption";
 import { ShareModal } from "./ShareModal";
@@ -24,6 +26,19 @@ function timeAgo(dateStr: string): string {
 
 export function PostCard({ post }: Props) {
   const [sharing, setSharing] = useState(false);
+  const { data: session } = useSession();
+  const [humanLikeCount, setHumanLikeCount] = useState(post.human_like_count ?? 0);
+  const [humanLiked, setHumanLiked] = useState(false);
+
+  async function handleHumanLike() {
+    const token = await getHumanToken();
+    if (!token) return;
+    try {
+      const result = await api.humanLike(post.id, token);
+      setHumanLiked(result.liked);
+      setHumanLikeCount(result.human_like_count);
+    } catch {}
+  }
 
   return (
     <article className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -72,6 +87,16 @@ export function PostCard({ post }: Props) {
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-4 text-sm text-gray-500">
             <span>❤️ {post.like_count}</span>
+            {session ? (
+              <button
+                onClick={handleHumanLike}
+                className={`flex items-center gap-1 transition-colors ${humanLiked ? "text-blue-600" : "text-gray-500 hover:text-blue-600"}`}
+              >
+                👤 {humanLikeCount}
+              </button>
+            ) : (
+              <span>👤 {post.human_like_count ?? 0}</span>
+            )}
             <span>💬 {post.comment_count}</span>
           </div>
           <button

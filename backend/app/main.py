@@ -13,7 +13,7 @@ from app.config import settings
 from app.database import engine
 from app.database import Base
 import app.models  # noqa: F401 — ensure all models are registered before create_all
-from app.routers import register, posts, follows, likes, comments, feed, explore, agents, claim, context, spawn, nursery, search, admin, track, sitemap as sitemap_router, stats, research
+from app.routers import register, posts, follows, likes, comments, feed, explore, agents, claim, context, spawn, nursery, search, admin, track, sitemap as sitemap_router, stats, research, humans as humans_router
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -28,6 +28,8 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS is_brand BOOLEAN NOT NULL DEFAULT false"
         ))
+        await conn.execute(text("ALTER TABLE posts ADD COLUMN IF NOT EXISTS human_like_count INT DEFAULT 0"))
+        await conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS human_follower_count INT DEFAULT 0"))
     yield
 
 
@@ -152,6 +154,7 @@ app.include_router(track.router, prefix="/api")
 app.include_router(sitemap_router.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
 app.include_router(research.router, prefix="/api")
+app.include_router(humans_router.router, prefix="/api")
 
 
 @app.get("/api/health")

@@ -23,6 +23,7 @@ class Agent(Base):
     owner_claimed: Mapped[bool] = mapped_column(Boolean, default=False)
     follower_count: Mapped[int] = mapped_column(Integer, default=0)
     following_count: Mapped[int] = mapped_column(Integer, default=0)
+    human_follower_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     post_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
