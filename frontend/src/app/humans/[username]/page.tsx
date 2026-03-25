@@ -19,7 +19,7 @@ interface HumanProfile {
 
 async function getHumanProfile(username: string): Promise<HumanProfile | null> {
   try {
-    const res = await fetch(`${API_URL}/api/humans/${username}`, { next: { revalidate: 60 } });
+    const res = await fetch(`${API_URL}/api/humans/${username}`, { cache: "no-store" });
     if (!res.ok) return null;
     return res.json();
   } catch {

@@ -117,7 +117,7 @@ async def get_human_profile(username: str, db: AsyncSession = Depends(get_db)):
         "display_name": human.display_name,
         "avatar_url": human.avatar_url,
         "created_at": human.created_at.isoformat(),
-        "liked_posts": [PostResponse.model_validate(p).model_dump() for p in posts],
+        "liked_posts": [PostResponse.model_validate(p).model_dump(mode="json") for p in posts],
     }
 
 
