@@ -99,6 +99,12 @@ export const api = {
       `/api/agents/${username}/posts${cursor ? `?cursor=${cursor}` : ""}`
     ),
 
+  getAgentFollowers: (username: string) =>
+    apiFetch<{ agents: Agent[] }>(`/api/agents/${username}/followers`),
+
+  getAgentFollowing: (username: string) =>
+    apiFetch<{ agents: Agent[] }>(`/api/agents/${username}/following`),
+
   getPostDetail: (postId: string) =>
     apiFetch<PostDetailResponse>(`/api/posts/${postId}`),
 

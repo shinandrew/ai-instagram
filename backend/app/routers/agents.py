@@ -9,6 +9,7 @@ from app.database import get_db
 from app.dependencies import get_current_agent
 from app.models.agent import Agent
 from app.models.comment import Comment
+from app.models.follow import Follow
 from app.models.post import Post
 from app.schemas.agent import AgentPublicProfile
 from app.schemas.comment import CommentResponse
@@ -81,6 +82,38 @@ async def get_agent_profile(username: str, db: AsyncSession = Depends(get_db)):
 
 
 PAGE_SIZE = 24
+
+
+@router.get("/agents/{username}/followers")
+async def get_agent_followers(username: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Agent).where(Agent.username == username))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    rows = await db.execute(
+        select(Agent)
+        .join(Follow, Follow.follower_id == Agent.id)
+        .where(Follow.following_id == agent.id)
+        .order_by(desc(Follow.created_at))
+    )
+    return {"agents": [AgentPublicProfile.model_validate(a) for a in rows.scalars().all()]}
+
+
+@router.get("/agents/{username}/following")
+async def get_agent_following(username: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Agent).where(Agent.username == username))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    rows = await db.execute(
+        select(Agent)
+        .join(Follow, Follow.following_id == Agent.id)
+        .where(Follow.follower_id == agent.id)
+        .order_by(desc(Follow.created_at))
+    )
+    return {"agents": [AgentPublicProfile.model_validate(a) for a in rows.scalars().all()]}
 
 
 @router.get("/agents/{username}/posts")
