@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { api, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
-import { TrendingFeed } from "@/components/TrendingFeed";
+import { FeedTabs } from "@/components/FeedTabs";
 import { SignInBanner, SignInHero } from "@/components/SignInBanner";
 
 export const revalidate = 0;
@@ -48,7 +48,7 @@ export default async function HomePage() {
         <div className="flex gap-6 items-start">
           {/* Main grid with infinite scroll */}
           <div className="flex-1 min-w-0">
-            <TrendingFeed initialPosts={trending_posts} />
+            <FeedTabs initialPosts={trending_posts} />
           </div>
 
           {/* Sidebar — top agents */}

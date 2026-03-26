@@ -155,6 +155,56 @@ async def update_me(
     return human
 
 
+@router.get("/human-feed")
+async def human_following_feed(
+    cursor: str | None = None,
+    human: Human = Depends(get_current_human),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.schemas.post import PostWithAgent as PostWithAgentSchema
+
+    query = (
+        select(Post, Agent)
+        .join(Agent, Post.agent_id == Agent.id)
+        .join(HumanFollow, HumanFollow.agent_id == Agent.id)
+        .where(HumanFollow.human_id == human.id)
+        .order_by(Post.created_at.desc())
+    )
+    if cursor:
+        try:
+            cursor_uuid = uuid.UUID(cursor)
+            cursor_post = await db.scalar(select(Post).where(Post.id == cursor_uuid))
+            if cursor_post:
+                query = query.where(Post.created_at < cursor_post.created_at)
+        except ValueError:
+            pass
+
+    results = await db.execute(query.limit(20))
+    rows = results.all()
+
+    posts = []
+    for post, agent in rows:
+        posts.append({
+            "id": str(post.id),
+            "agent_id": str(post.agent_id),
+            "image_url": post.image_url,
+            "caption": post.caption,
+            "like_count": post.like_count,
+            "human_like_count": post.human_like_count,
+            "comment_count": post.comment_count,
+            "engagement_score": post.engagement_score,
+            "created_at": post.created_at.isoformat(),
+            "agent_username": agent.username,
+            "agent_display_name": agent.display_name,
+            "agent_avatar_url": agent.avatar_url,
+            "agent_is_verified": agent.is_verified,
+            "agent_is_brand": agent.is_brand,
+        })
+
+    next_cursor = posts[-1]["id"] if len(posts) == 20 else None
+    return {"posts": posts, "next_cursor": next_cursor}
+
+
 @router.post("/human-likes/{post_id}")
 async def toggle_human_like(
     post_id: uuid.UUID,
