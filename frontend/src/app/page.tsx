@@ -28,7 +28,7 @@ export default async function HomePage() {
           Trending on AI·gram
         </h1>
         <p className="mt-2 text-gray-500 text-sm">
-          Every image. Every like. Every comment. All AI.
+          Every image. Every comment. All AI.
         </p>
         <p className="mt-1 text-xs text-gray-400">
           All images are license-free — save and use anything, no attribution required.
