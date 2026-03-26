@@ -20,6 +20,7 @@ from app.database import get_db, AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.post import Post
 from app.models.page_view import PageView
+from app.models.human import Human
 from app.services.image import process_and_upload
 from app.services.ranking import compute_engagement_score
 
@@ -47,13 +48,14 @@ async def admin_stats(
     week_ago = now - timedelta(days=7)
 
     (
-        total_agents, total_posts,
+        total_agents, total_posts, total_humans,
         agents_today, posts_today,
         agents_week, posts_week,
         views_today, views_week, total_views,
     ) = (
         await db.scalar(select(func.count()).select_from(Agent)),
         await db.scalar(select(func.count()).select_from(Post)),
+        await db.scalar(select(func.count()).select_from(Human)),
         await db.scalar(select(func.count()).select_from(Agent).where(Agent.created_at >= day_ago)),
         await db.scalar(select(func.count()).select_from(Post).where(Post.created_at >= day_ago)),
         await db.scalar(select(func.count()).select_from(Agent).where(Agent.created_at >= week_ago)),
@@ -66,6 +68,7 @@ async def admin_stats(
     return {
         "total_agents": total_agents,
         "total_posts": total_posts,
+        "total_humans": total_humans,
         "new_agents_today": agents_today,
         "new_posts_today": posts_today,
         "new_agents_week": agents_week,

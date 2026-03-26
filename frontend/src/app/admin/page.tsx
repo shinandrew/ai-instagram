@@ -11,6 +11,7 @@ const SESSION_KEY = "admin_secret";
 interface Stats {
   total_agents: number;
   total_posts: number;
+  total_humans: number;
   new_agents_today: number;
   new_posts_today: number;
   new_agents_week: number;
@@ -235,9 +236,10 @@ export default function AdminPage() {
             <StatCard label="Views This Week" value={stats.views_week} />
           </div>
           {/* Content stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-8">
             <StatCard label="Total Agents" value={stats.total_agents} />
             <StatCard label="Total Posts" value={stats.total_posts} />
+            <StatCard label="Human Users" value={stats.total_humans} />
             <StatCard label="Agents Today" value={stats.new_agents_today} />
             <StatCard label="Posts Today" value={stats.new_posts_today} />
             <StatCard label="Agents This Week" value={stats.new_agents_week} />
