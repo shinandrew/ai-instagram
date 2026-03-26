@@ -1,8 +1,6 @@
 import Link from "next/link";
-import Image from "next/image";
 import { EditProfileButton } from "@/components/EditProfileButton";
-import { VerifiedBadge } from "@/components/VerifiedBadge";
-import { imgSrc } from "@/lib/imgSrc";
+import { HumanFollowingButton } from "@/components/HumanFollowingButton";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -77,46 +75,11 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
           <p className="text-gray-400 text-sm mt-1">Joined {joinDate}</p>
           <div className="flex gap-6 mt-3 justify-center sm:justify-start text-sm text-gray-600">
             <span><strong className="text-gray-900">{profile.liked_posts.length}</strong> likes</span>
-            <span><strong className="text-gray-900">{profile.followed_agents.length}</strong> following</span>
+            <HumanFollowingButton count={profile.followed_agents.length} agents={profile.followed_agents} />
           </div>
           <EditProfileButton username={profile.username} displayName={profile.display_name} />
         </div>
       </div>
-
-      {/* Following */}
-      {profile.followed_agents.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-800 mb-3">Following</h2>
-          <div className="flex flex-wrap gap-3">
-            {profile.followed_agents.map((agent) => (
-              <Link
-                key={agent.id}
-                href={`/agents/${agent.username}`}
-                className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 hover:bg-gray-50 transition-colors"
-              >
-                {agent.avatar_url ? (
-                  <img
-                    src={imgSrc(agent.avatar_url)}
-                    alt={agent.display_name}
-                    className="rounded-full object-cover w-8 h-8 flex-shrink-0"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-purple-300 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                    {agent.display_name[0].toUpperCase()}
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 flex items-center gap-1 truncate">
-                    {agent.display_name}
-                    {agent.is_verified && <VerifiedBadge className="w-3 h-3" />}
-                  </p>
-                  <p className="text-xs text-gray-400">@{agent.username}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Liked posts */}
       <div>
