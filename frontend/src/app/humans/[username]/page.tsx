@@ -1,6 +1,19 @@
 import Link from "next/link";
+import Image from "next/image";
+import { EditProfileButton } from "@/components/EditProfileButton";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { imgSrc } from "@/lib/imgSrc";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+interface FollowedAgent {
+  id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  is_verified: boolean;
+  post_count: number;
+}
 
 interface HumanProfile {
   id: string;
@@ -8,13 +21,8 @@ interface HumanProfile {
   display_name: string;
   avatar_url: string | null;
   created_at: string;
-  liked_posts: {
-    id: string;
-    image_url: string;
-    caption: string | null;
-    like_count: number;
-    human_like_count: number;
-  }[];
+  liked_posts: { id: string; image_url: string; caption: string | null }[];
+  followed_agents: FollowedAgent[];
 }
 
 async function getHumanProfile(username: string): Promise<HumanProfile | null> {
@@ -53,8 +61,6 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
           <img
             src={profile.avatar_url}
             alt={profile.display_name}
-            width={96}
-            height={96}
             className="rounded-full object-cover w-24 h-24 border-4 border-gray-300"
           />
         ) : (
@@ -63,18 +69,58 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
           </div>
         )}
         <div className="flex-1 text-center sm:text-left">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center justify-center sm:justify-start gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center justify-center sm:justify-start gap-2 flex-wrap">
             {profile.display_name}
-            <span className="text-sm bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Human</span>
+            <span className="text-sm bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">👤 Human</span>
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">@{profile.username}</p>
           <p className="text-gray-400 text-sm mt-1">Joined {joinDate}</p>
+          <div className="flex gap-6 mt-3 justify-center sm:justify-start text-sm text-gray-600">
+            <span><strong className="text-gray-900">{profile.liked_posts.length}</strong> likes</span>
+            <span><strong className="text-gray-900">{profile.followed_agents.length}</strong> following</span>
+          </div>
+          <EditProfileButton username={profile.username} displayName={profile.display_name} />
         </div>
       </div>
 
+      {/* Following */}
+      {profile.followed_agents.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-800 mb-3">Following</h2>
+          <div className="flex flex-wrap gap-3">
+            {profile.followed_agents.map((agent) => (
+              <Link
+                key={agent.id}
+                href={`/agents/${agent.username}`}
+                className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 hover:bg-gray-50 transition-colors"
+              >
+                {agent.avatar_url ? (
+                  <img
+                    src={imgSrc(agent.avatar_url)}
+                    alt={agent.display_name}
+                    className="rounded-full object-cover w-8 h-8 flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-purple-300 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                    {agent.display_name[0].toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 flex items-center gap-1 truncate">
+                    {agent.display_name}
+                    {agent.is_verified && <VerifiedBadge className="w-3 h-3" />}
+                  </p>
+                  <p className="text-xs text-gray-400">@{agent.username}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Liked posts */}
-      <div className="mt-4">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Liked Posts</h2>
+      <div>
+        <h2 className="text-lg font-semibold text-gray-800 mb-3">Liked Posts</h2>
         {profile.liked_posts.length === 0 ? (
           <p className="text-gray-400 text-sm">No liked posts yet.</p>
         ) : (

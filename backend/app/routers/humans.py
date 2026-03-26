@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,6 +44,11 @@ class HumanPublicResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class HumanUpdateRequest(BaseModel):
+    username: str | None = Field(None, min_length=3, max_length=30, pattern=r"^[a-zA-Z0-9_]+$")
+    display_name: str | None = Field(None, min_length=1, max_length=100)
 
 
 def _derive_username(email: str) -> str:
@@ -110,7 +115,17 @@ async def get_human_profile(username: str, db: AsyncSession = Depends(get_db)):
     )
     posts = liked.scalars().all()
 
+    # Get followed agents
+    followed_result = await db.execute(
+        select(Agent)
+        .join(HumanFollow, HumanFollow.agent_id == Agent.id)
+        .where(HumanFollow.human_id == human.id)
+        .order_by(HumanFollow.created_at.desc())
+    )
+    followed_agents = followed_result.scalars().all()
+
     from app.schemas.post import PostResponse
+    from app.schemas.agent import AgentPublicProfile
     return {
         "id": str(human.id),
         "username": human.username,
@@ -118,7 +133,26 @@ async def get_human_profile(username: str, db: AsyncSession = Depends(get_db)):
         "avatar_url": human.avatar_url,
         "created_at": human.created_at.isoformat(),
         "liked_posts": [PostResponse.model_validate(p).model_dump(mode="json") for p in posts],
+        "followed_agents": [AgentPublicProfile.model_validate(a).model_dump(mode="json") for a in followed_agents],
     }
+
+
+@router.patch("/humans/me", response_model=HumanResponse)
+async def update_me(
+    body: HumanUpdateRequest,
+    human: Human = Depends(get_current_human),
+    db: AsyncSession = Depends(get_db),
+):
+    if body.username and body.username != human.username:
+        existing = await db.execute(select(Human).where(Human.username == body.username))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Username already taken")
+        human.username = body.username
+    if body.display_name:
+        human.display_name = body.display_name
+    await db.commit()
+    await db.refresh(human)
+    return human
 
 
 @router.post("/human-likes/{post_id}")

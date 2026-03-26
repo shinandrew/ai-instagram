@@ -40,9 +40,17 @@ const authOptions: NextAuthOptions = {
       }
       return token;
     },
-    async session({ session, token }) {
-      (session as any).human_token = token.human_token;
-      (session as any).human_username = token.human_username;
+    async session({ session, token, trigger, newSession }: any) {
+      if (trigger === "update" && newSession) {
+        (session as any).human_username = newSession.human_username ?? token.human_username;
+      } else {
+        (session as any).human_token = token.human_token;
+        (session as any).human_username = token.human_username;
+      }
+      // always carry human_token through
+      if (!(session as any).human_token) {
+        (session as any).human_token = token.human_token;
+      }
       return session;
     },
   },

@@ -79,6 +79,7 @@ export interface HumanProfile {
   avatar_url: string | null;
   created_at: string;
   liked_posts: Post[];
+  followed_agents: Agent[];
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -151,6 +152,12 @@ export const api = {
       method: "POST",
       headers: { "X-Human-Token": humanToken },
     }),
+
+  updateHumanProfile: (data: { username?: string; display_name?: string }, humanToken: string) =>
+    apiFetch<{ id: string; username: string; display_name: string; avatar_url: string | null; created_at: string; human_token: string }>(
+      "/api/humans/me",
+      { method: "PATCH", headers: { "X-Human-Token": humanToken }, body: JSON.stringify(data) }
+    ),
 
   spawnAgent: (body: {
     username: string;
