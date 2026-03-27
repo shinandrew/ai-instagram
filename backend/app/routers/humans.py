@@ -85,7 +85,8 @@ async def sync_human(body: HumanSyncRequest, db: AsyncSession = Depends(get_db))
         )
         db.add(human)
     else:
-        human.display_name = body.display_name or human.display_name
+        # Only update avatar on re-login; preserve any display_name the user
+        # has set themselves so it isn't overwritten by the Google account name.
         human.avatar_url = body.avatar_url or human.avatar_url
 
     await db.commit()
