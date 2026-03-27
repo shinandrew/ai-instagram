@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Image from "next/image";
+import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const SESSION_KEY = "admin_secret";
@@ -45,7 +46,29 @@ interface AdminAgent {
   created_at: string;
 }
 
-type Tab = "posts" | "agents";
+interface AdminHuman {
+  id: string;
+  username: string;
+  display_name: string;
+  email: string;
+  avatar_url: string | null;
+  like_count: number;
+  created_at: string;
+}
+
+interface AdminComment {
+  id: string;
+  body: string;
+  created_at: string;
+  agent_username: string;
+  agent_display_name: string;
+  agent_avatar_url: string | null;
+  post_id: string;
+  post_caption: string | null;
+  post_image_url: string;
+}
+
+type Tab = "posts" | "agents" | "humans" | "comments";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -77,6 +100,7 @@ export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("posts");
 
   const [stats, setStats] = useState<Stats | null>(null);
+
   const [posts, setPosts] = useState<AdminPost[]>([]);
   const [postsPage, setPostsPage] = useState(1);
   const [postsTotal, setPostsTotal] = useState(0);
@@ -86,6 +110,13 @@ export default function AdminPage() {
   const [agentsPage, setAgentsPage] = useState(1);
   const [agentsTotal, setAgentsTotal] = useState(0);
   const [agentsPages, setAgentsPages] = useState(1);
+
+  const [humans, setHumans] = useState<AdminHuman[]>([]);
+
+  const [comments, setComments] = useState<AdminComment[]>([]);
+  const [commentsPage, setCommentsPage] = useState(1);
+  const [commentsTotal, setCommentsTotal] = useState(0);
+  const [commentsPages, setCommentsPages] = useState(1);
 
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -132,12 +163,33 @@ export default function AdminPage() {
     } finally { setLoading(false); }
   }, [adminFetch]);
 
+  const loadHumans = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await adminFetch("/api/admin/humans");
+      setHumans(data);
+    } finally { setLoading(false); }
+  }, [adminFetch]);
+
+  const loadComments = useCallback(async (page = 1) => {
+    setLoading(true);
+    try {
+      const data = await adminFetch(`/api/admin/comments?page=${page}`);
+      setComments(data.comments);
+      setCommentsTotal(data.total);
+      setCommentsPages(data.pages);
+      setCommentsPage(page);
+    } finally { setLoading(false); }
+  }, [adminFetch]);
+
   useEffect(() => {
     if (!authed) return;
     loadStats();
     loadPosts(1);
     loadAgents(1);
-  }, [authed, loadStats, loadPosts, loadAgents]);
+    loadHumans();
+    loadComments(1);
+  }, [authed, loadStats, loadPosts, loadAgents, loadHumans, loadComments]);
 
   // ── Auth ──
 
@@ -175,7 +227,17 @@ export default function AdminPage() {
       await adminFetch(`/api/admin/agents/${id}`, { method: "DELETE" });
       setAgents(a => a.filter(x => x.id !== id));
       setAgentsTotal(t => t - 1);
-      loadStats(); // refresh counts since posts also gone
+      loadStats();
+    } finally { setDeletingId(null); }
+  }
+
+  async function deleteComment(id: string) {
+    if (!confirm("Delete this comment? This cannot be undone.")) return;
+    setDeletingId(id);
+    try {
+      await adminFetch(`/api/admin/comments/${id}`, { method: "DELETE" });
+      setComments(c => c.filter(x => x.id !== id));
+      setCommentsTotal(t => t - 1);
     } finally { setDeletingId(null); }
   }
 
@@ -214,6 +276,13 @@ export default function AdminPage() {
 
   // ── Dashboard ──
 
+  const TAB_LABELS: Record<Tab, string> = {
+    posts: `Posts (${postsTotal})`,
+    agents: `Agents (${agentsTotal})`,
+    humans: `Humans (${humans.length})`,
+    comments: `Comments (${commentsTotal})`,
+  };
+
   return (
     <div className="max-w-5xl mx-auto py-8 px-4">
       <div className="flex items-center justify-between mb-8">
@@ -229,13 +298,11 @@ export default function AdminPage() {
       {/* Stats */}
       {stats && (
         <>
-          {/* Visitor stats */}
           <div className="grid grid-cols-3 gap-3 mb-3">
             <StatCard label="Page Views (All Time)" value={stats.total_views} />
             <StatCard label="Views Today" value={stats.views_today} />
             <StatCard label="Views This Week" value={stats.views_week} />
           </div>
-          {/* Content stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-8">
             <StatCard label="Total Agents" value={stats.total_agents} />
             <StatCard label="Total Posts" value={stats.total_posts} />
@@ -249,16 +316,16 @@ export default function AdminPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1 w-fit">
-        {(["posts", "agents"] as Tab[]).map(t => (
+      <div className="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
+        {(["posts", "agents", "humans", "comments"] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors capitalize ${
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               tab === t ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
             }`}
           >
-            {t} {t === "posts" ? `(${postsTotal})` : `(${agentsTotal})`}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
@@ -279,27 +346,15 @@ export default function AdminPage() {
             {posts.map(post => (
               <div key={post.id} className="group relative bg-gray-100 rounded-xl overflow-hidden">
                 <div className="aspect-square relative">
-                  <Image
-                    src={post.image_url}
-                    alt={post.caption ?? "post"}
-                    fill
-                    className="object-cover"
-                    sizes="25vw"
-                    unoptimized
-                  />
+                  <Image src={post.image_url} alt={post.caption ?? "post"} fill className="object-cover" sizes="25vw" unoptimized />
                 </div>
                 <div className="p-2">
                   <p className="text-xs font-medium text-gray-700 truncate">@{post.agent_username}</p>
-                  {post.caption && (
-                    <p className="text-xs text-gray-400 truncate mt-0.5">{post.caption}</p>
-                  )}
+                  {post.caption && <p className="text-xs text-gray-400 truncate mt-0.5">{post.caption}</p>}
                   <div className="flex items-center justify-between mt-1.5">
                     <span className="text-xs text-gray-300">{timeAgo(post.created_at)}</span>
-                    <button
-                      onClick={() => deletePost(post.id)}
-                      disabled={deletingId === post.id}
-                      className="text-xs text-red-400 hover:text-red-600 transition-colors disabled:opacity-40"
-                    >
+                    <button onClick={() => deletePost(post.id)} disabled={deletingId === post.id}
+                      className="text-xs text-red-400 hover:text-red-600 transition-colors disabled:opacity-40">
                       {deletingId === post.id ? "…" : "Delete"}
                     </button>
                   </div>
@@ -332,14 +387,8 @@ export default function AdminPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
                         {agent.avatar_url ? (
-                          <Image
-                            src={agent.avatar_url}
-                            alt={agent.display_name}
-                            width={32}
-                            height={32}
-                            className="rounded-full object-cover w-8 h-8 shrink-0"
-                            unoptimized
-                          />
+                          <Image src={agent.avatar_url} alt={agent.display_name} width={32} height={32}
+                            className="rounded-full object-cover w-8 h-8 shrink-0" unoptimized />
                         ) : (
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-purple-300 flex items-center justify-center text-white text-xs font-bold shrink-0">
                             {agent.display_name[0].toUpperCase()}
@@ -356,20 +405,13 @@ export default function AdminPage() {
                     <td className="px-4 py-3 text-right text-gray-400 text-xs">{timeAgo(agent.created_at)}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {agent.is_verified && (
-                          <span className="text-xs bg-blue-50 text-blue-500 rounded px-1.5 py-0.5">verified</span>
-                        )}
-                        {agent.nursery_enabled && (
-                          <span className="text-xs bg-green-50 text-green-600 rounded px-1.5 py-0.5">nursery</span>
-                        )}
+                        {agent.is_verified && <span className="text-xs bg-blue-50 text-blue-500 rounded px-1.5 py-0.5">verified</span>}
+                        {agent.nursery_enabled && <span className="text-xs bg-green-50 text-green-600 rounded px-1.5 py-0.5">nursery</span>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => deleteAgent(agent.id, agent.username)}
-                        disabled={deletingId === agent.id}
-                        className="text-xs text-red-400 hover:text-red-600 transition-colors disabled:opacity-40"
-                      >
+                      <button onClick={() => deleteAgent(agent.id, agent.username)} disabled={deletingId === agent.id}
+                        className="text-xs text-red-400 hover:text-red-600 transition-colors disabled:opacity-40">
                         {deletingId === agent.id ? "…" : "Delete"}
                       </button>
                     </td>
@@ -379,6 +421,108 @@ export default function AdminPage() {
             </table>
           </div>
           <Pagination page={agentsPage} pages={agentsPages} onChange={p => loadAgents(p)} />
+        </>
+      )}
+
+      {/* Humans tab */}
+      {!loading && tab === "humans" && (
+        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide">
+                <th className="text-left px-4 py-3">User</th>
+                <th className="text-left px-4 py-3">Email</th>
+                <th className="text-right px-4 py-3">Likes</th>
+                <th className="text-right px-4 py-3">Joined</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {humans.map(human => (
+                <tr key={human.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      {human.avatar_url ? (
+                        <Image src={human.avatar_url} alt={human.display_name} width={32} height={32}
+                          className="rounded-full object-cover w-8 h-8 shrink-0" unoptimized />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-300 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                          {human.display_name[0]?.toUpperCase() ?? "?"}
+                        </div>
+                      )}
+                      <div>
+                        <Link href={`/humans/${human.username}`} className="font-medium text-gray-900 hover:underline">
+                          {human.display_name}
+                        </Link>
+                        <p className="text-xs text-gray-400">@{human.username}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{human.email}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">❤️ {human.like_count}</td>
+                  <td className="px-4 py-3 text-right text-gray-400 text-xs">{timeAgo(human.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Comments tab */}
+      {!loading && tab === "comments" && (
+        <>
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide">
+                  <th className="text-left px-4 py-3">Agent</th>
+                  <th className="text-left px-4 py-3">Comment</th>
+                  <th className="text-left px-4 py-3">On Post</th>
+                  <th className="text-right px-4 py-3">When</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {comments.map(c => (
+                  <tr key={c.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {c.agent_avatar_url ? (
+                          <Image src={c.agent_avatar_url} alt={c.agent_display_name} width={28} height={28}
+                            className="rounded-full object-cover w-7 h-7 shrink-0" unoptimized />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-500 to-purple-300 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                            {c.agent_display_name[0].toUpperCase()}
+                          </div>
+                        )}
+                        <span className="text-xs text-gray-500 whitespace-nowrap">@{c.agent_username}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 max-w-xs">
+                      <p className="text-sm text-gray-800 line-clamp-2">{c.body}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link href={`/posts/${c.post_id}`} className="flex items-center gap-2 group">
+                        <div className="w-8 h-8 relative shrink-0 rounded overflow-hidden bg-gray-100">
+                          <Image src={c.post_image_url} alt={c.post_caption ?? ""} fill className="object-cover" unoptimized />
+                        </div>
+                        <span className="text-xs text-gray-400 truncate max-w-[120px] group-hover:underline">
+                          {c.post_caption ?? "(no caption)"}
+                        </span>
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-400 text-xs whitespace-nowrap">{timeAgo(c.created_at)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button onClick={() => deleteComment(c.id)} disabled={deletingId === c.id}
+                        className="text-xs text-red-400 hover:text-red-600 transition-colors disabled:opacity-40">
+                        {deletingId === c.id ? "…" : "Delete"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={commentsPage} pages={commentsPages} onChange={p => loadComments(p)} />
         </>
       )}
     </div>
@@ -391,19 +535,13 @@ function Pagination({ page, pages, onChange }: { page: number; pages: number; on
   if (pages <= 1) return null;
   return (
     <div className="flex items-center justify-center gap-2 mt-6">
-      <button
-        onClick={() => onChange(page - 1)}
-        disabled={page <= 1}
-        className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-      >
+      <button onClick={() => onChange(page - 1)} disabled={page <= 1}
+        className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
         ← Prev
       </button>
       <span className="text-xs text-gray-400">Page {page} of {pages}</span>
-      <button
-        onClick={() => onChange(page + 1)}
-        disabled={page >= pages}
-        className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-      >
+      <button onClick={() => onChange(page + 1)} disabled={page >= pages}
+        className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
         Next →
       </button>
     </div>

@@ -18,9 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db, AsyncSessionLocal
 from app.models.agent import Agent
+from app.models.comment import Comment
 from app.models.post import Post
 from app.models.page_view import PageView
 from app.models.human import Human
+from app.models.human_like import HumanLike
 from app.services.image import process_and_upload
 from app.services.ranking import compute_engagement_score
 
@@ -460,12 +462,24 @@ async def admin_list_humans(
 ):
     result = await db.execute(select(Human).order_by(Human.created_at))
     humans = result.scalars().all()
+
+    # like counts per human
+    like_counts = {
+        row[0]: row[1]
+        for row in (await db.execute(
+            select(HumanLike.human_id, func.count(HumanLike.post_id))
+            .group_by(HumanLike.human_id)
+        )).all()
+    }
+
     return [
         {
             "id": str(h.id),
             "username": h.username,
             "display_name": h.display_name,
             "email": h.email,
+            "avatar_url": h.avatar_url,
+            "like_count": like_counts.get(h.id, 0),
             "created_at": h.created_at.isoformat(),
         }
         for h in humans
@@ -493,6 +507,62 @@ async def admin_patch_human(
     await db.commit()
     await db.refresh(human)
     return {"id": str(human.id), "username": human.username, "display_name": human.display_name}
+
+
+@router.get("/admin/comments")
+async def admin_list_comments(
+    page: int = Query(1, ge=1),
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    offset = (page - 1) * PAGE_SIZE
+    rows = (await db.execute(
+        select(Comment, Agent, Post)
+        .join(Agent, Comment.agent_id == Agent.id)
+        .join(Post, Comment.post_id == Post.id)
+        .order_by(desc(Comment.created_at))
+        .offset(offset)
+        .limit(PAGE_SIZE)
+    )).all()
+    total = await db.scalar(select(func.count()).select_from(Comment))
+
+    return {
+        "total": total,
+        "page": page,
+        "pages": max(1, -(-total // PAGE_SIZE)),
+        "comments": [
+            {
+                "id": str(c.id),
+                "body": c.body,
+                "created_at": c.created_at.isoformat(),
+                "agent_id": str(a.id),
+                "agent_username": a.username,
+                "agent_display_name": a.display_name,
+                "agent_avatar_url": a.avatar_url,
+                "post_id": str(p.id),
+                "post_caption": p.caption,
+                "post_image_url": p.image_url,
+            }
+            for c, a, p in rows
+        ],
+    }
+
+
+@router.delete("/admin/comments/{comment_id}", status_code=204)
+async def admin_delete_comment(
+    comment_id: str,
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        cid = uuid.UUID(comment_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid comment ID")
+    comment = await db.get(Comment, cid)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    await db.delete(comment)
+    await db.commit()
 
 
 @router.post("/admin/burst")
