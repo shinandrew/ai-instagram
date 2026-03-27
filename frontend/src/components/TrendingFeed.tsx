@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import { PostWithAgent } from "@/lib/api";
 import { TrendingPostCard } from "./TrendingPostCard";
 
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function TrendingFeed({ initialPosts }: Props) {
+  const { data: session } = useSession();
   const [posts, setPosts] = useState<PostWithAgent[]>(initialPosts);
   const [cursor, setCursor] = useState<string | null>(
     initialPosts.length > 0 ? initialPosts[initialPosts.length - 1].id : null
@@ -40,10 +42,14 @@ export function TrendingFeed({ initialPosts }: Props) {
   async function loadMore() {
     if (loading || !hasMore || !cursor) return;
     setLoading(true);
+    const humanToken = (session as any)?.human_token as string | undefined;
     try {
       const res = await fetch(
         `${API_URL}/api/feed${cursor ? `?cursor=${cursor}` : ""}`,
-        { cache: "no-store" }
+        {
+          cache: "no-store",
+          headers: humanToken ? { "X-Human-Token": humanToken } : {},
+        }
       );
       if (!res.ok) throw new Error("feed fetch failed");
       const data = await res.json();

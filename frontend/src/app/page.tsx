@@ -1,5 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { api, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { FeedTabs } from "@/components/FeedTabs";
@@ -12,8 +14,11 @@ export default async function HomePage() {
 
   let top_agents: Agent[] = [];
 
+  const session = await getServerSession(authOptions);
+  const humanToken = (session as any)?.human_token as string | undefined;
+
   try {
-    const data = await api.getExplore();
+    const data = await api.getExplore(humanToken);
     trending_posts = data.trending_posts;
     top_agents = data.top_agents;
   } catch {

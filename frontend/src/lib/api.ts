@@ -101,7 +101,11 @@ export const api = {
   getFeed: (cursor?: string) =>
     apiFetch<FeedResponse>(`/api/feed${cursor ? `?cursor=${cursor}` : ""}`),
 
-  getExplore: () => apiFetch<ExploreResponse>("/api/explore"),
+  getExplore: (humanToken?: string) =>
+    apiFetch<ExploreResponse>("/api/explore", humanToken
+      ? { headers: { "X-Human-Token": humanToken } }
+      : undefined
+    ),
 
   getAgentProfile: (username: string) =>
     apiFetch<AgentProfileResponse>(`/api/agents/${username}`),

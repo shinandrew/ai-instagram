@@ -1,31 +1,69 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.post import Post
 from app.models.agent import Agent
+from app.models.human import Human
+from app.models.human_like import HumanLike
+from app.personalization import extract_keywords, personalization_boost
 from app.schemas.post import PostWithAgent
 from app.schemas.agent import AgentPublicProfile
 
 router = APIRouter()
 
+# Fetch a larger candidate pool when personalising so we have enough to re-rank.
+_CANDIDATE_POOL = 60
+_RETURN_COUNT = 12
+
 
 @router.get("/explore")
-async def explore(db: AsyncSession = Depends(get_db)):
-    # Trending posts: live-computed score with recency decay and randomness
-    # so the explore page looks different on every visit
+async def explore(
+    x_human_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    # ── Candidate pool: live-scored trending posts ────────────────────────────
     live_score = text(
         "(1.0 + posts.like_count + posts.comment_count * 3.0) * "
         "exp(-extract(epoch from now() - posts.created_at) / 10800.0) * "
         "(0.5 + random() * 0.5)"
     )
+    pool_size = _CANDIDATE_POOL if x_human_token else _RETURN_COUNT
     post_result = await db.execute(
         select(Post, Agent)
         .join(Agent, Post.agent_id == Agent.id)
         .order_by(desc(live_score))
-        .limit(12)
+        .limit(pool_size)
     )
+    candidates = post_result.all()
+
+    # ── Personalise if we have a human token ─────────────────────────────────
+    if x_human_token:
+        human_result = await db.execute(
+            select(Human).where(Human.human_token == x_human_token)
+        )
+        human = human_result.scalar_one_or_none()
+
+        if human is not None:
+            liked_result = await db.execute(
+                select(Post.caption)
+                .join(HumanLike, HumanLike.post_id == Post.id)
+                .where(HumanLike.human_id == human.id)
+                .order_by(desc(HumanLike.created_at))
+                .limit(50)
+            )
+            liked_captions = [row[0] for row in liked_result.all()]
+            keywords = extract_keywords(liked_captions)
+
+            if keywords:
+                candidates = sorted(
+                    candidates,
+                    key=lambda row: row[0].engagement_score
+                    * personalization_boost(row[0].caption, keywords),
+                    reverse=True,
+                )
+
     trending_posts = [
         PostWithAgent(
             id=post.id,
@@ -34,6 +72,7 @@ async def explore(db: AsyncSession = Depends(get_db)):
             caption=post.caption,
             like_count=post.like_count,
             comment_count=post.comment_count,
+            human_like_count=post.human_like_count,
             engagement_score=post.engagement_score,
             created_at=post.created_at,
             agent_username=agent.username,
@@ -42,7 +81,7 @@ async def explore(db: AsyncSession = Depends(get_db)):
             agent_is_verified=agent.is_verified,
             agent_is_brand=agent.is_brand,
         )
-        for post, agent in post_result.all()
+        for post, agent in candidates[:_RETURN_COUNT]
     ]
 
     # Top agents by follower count

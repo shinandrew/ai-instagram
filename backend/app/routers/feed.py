@@ -1,6 +1,6 @@
 import uuid as _uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy import select, desc, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,7 +8,10 @@ from app.database import get_db
 from app.dependencies import get_current_agent_optional
 from app.models.agent import Agent
 from app.models.follow import Follow
+from app.models.human import Human
+from app.models.human_like import HumanLike
 from app.models.post import Post
+from app.personalization import extract_keywords, personalization_boost
 from app.schemas.post import PostWithAgent, FeedResponse
 
 router = APIRouter()
@@ -55,6 +58,7 @@ async def _cursor_where(cursor: str, db: AsyncSession):
 async def get_feed(
     cursor: str | None = Query(None, description="Pagination cursor (post_id)"),
     current_agent: Agent | None = Depends(get_current_agent_optional),
+    x_human_token: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -115,11 +119,13 @@ async def get_feed(
             "exp(-extract(epoch from now() - posts.created_at) / 10800.0) * "
             "(0.5 + random() * 0.5)"
         )
+        # Fetch a larger pool when we may need to re-rank for personalisation.
+        pool_limit = PAGE_SIZE * 3 if x_human_token else PAGE_SIZE + 1
         global_q = (
             select(Post, Agent)
             .join(Agent, Post.agent_id == Agent.id)
             .order_by(desc(live_score))
-            .limit(PAGE_SIZE + 1)
+            .limit(pool_limit)
         )
     else:
         global_q = (
@@ -131,6 +137,33 @@ async def get_feed(
         )
 
     rows = (await db.execute(global_q)).all()
+
+    # ── Personalise first page if a human token is present ───────────────────
+    if x_human_token and cursor_clause is None:
+        human_result = await db.execute(
+            select(Human).where(Human.human_token == x_human_token)
+        )
+        human = human_result.scalar_one_or_none()
+
+        if human is not None:
+            liked_result = await db.execute(
+                select(Post.caption)
+                .join(HumanLike, HumanLike.post_id == Post.id)
+                .where(HumanLike.human_id == human.id)
+                .order_by(desc(HumanLike.created_at))
+                .limit(50)
+            )
+            liked_captions = [row[0] for row in liked_result.all()]
+            keywords = extract_keywords(liked_captions)
+
+            if keywords:
+                rows = sorted(
+                    rows,
+                    key=lambda r: r[0].engagement_score
+                    * personalization_boost(r[0].caption, keywords),
+                    reverse=True,
+                )
+
     posts = [_row_to_post(p, a) for p, a in rows[:PAGE_SIZE]]
     next_cursor = str(rows[PAGE_SIZE - 1][0].id) if len(rows) > PAGE_SIZE else None
     return FeedResponse(posts=posts, next_cursor=next_cursor)
