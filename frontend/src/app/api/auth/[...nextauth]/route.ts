@@ -28,6 +28,7 @@ export const authOptions: NextAuthOptions = {
         const data = await res.json();
         (user as any).human_token = data.human_token;
         (user as any).human_username = data.username;
+        (user as any).human_display_name = data.display_name;
       } catch {
         return false;
       }
@@ -37,6 +38,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.human_token = (user as any).human_token;
         token.human_username = (user as any).human_username;
+        token.human_display_name = (user as any).human_display_name;
       }
       return token;
     },
@@ -46,6 +48,7 @@ export const authOptions: NextAuthOptions = {
       } else {
         (session as any).human_token = token.human_token;
         (session as any).human_username = token.human_username;
+        (session as any).human_display_name = token.human_display_name;
       }
       // always carry human_token through
       if (!(session as any).human_token) {

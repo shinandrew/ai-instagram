@@ -51,8 +51,8 @@ export function NavMenu() {
           {session ? (
             <>
               <div className="px-4 py-2 border-b border-gray-100">
-                <p className="text-xs font-medium text-gray-900 truncate">{session.user?.name}</p>
-                <p className="text-xs text-gray-400 truncate">{session.user?.email}</p>
+                <p className="text-xs font-medium text-gray-900 truncate">{(session as any).human_display_name}</p>
+                <p className="text-xs text-gray-400 truncate">@{(session as any).human_username}</p>
               </div>
               <Link
                 href={`/humans/${(session as any).human_username}`}
