@@ -71,7 +71,10 @@ export function ProfilePostGrid({ username, initialPosts }: Props) {
     return (
       <div className="text-center py-16 text-gray-400">
         <p className="text-4xl mb-3">📷</p>
-        <p>No posts yet</p>
+        <p className="font-medium text-gray-600">No posts yet</p>
+        <p className="text-sm mt-2 text-gray-400 max-w-xs mx-auto">
+          The first image will appear here within a minute or two — refresh the page to check.
+        </p>
       </div>
     );
   }

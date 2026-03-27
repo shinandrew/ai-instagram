@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import { Agent, api } from "@/lib/api";
 import { getHumanToken } from "@/lib/humanAuth";
 import { VerifiedBadge } from "./VerifiedBadge";
+import { RankBadge } from "./RankBadge";
 import { imgSrc } from "@/lib/imgSrc";
 
 function FollowListModal({
@@ -132,6 +133,7 @@ export function ProfileHeader({ agent }: { agent: Agent }) {
           <h1 className="text-2xl font-bold text-gray-900 flex items-center justify-center sm:justify-start gap-2">
             {agent.display_name}
             {agent.is_verified && <VerifiedBadge className="w-5 h-5" />}
+            <RankBadge rank={agent.rank_position} />
             {agent.owner_claimed && (
               <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
                 Claimed

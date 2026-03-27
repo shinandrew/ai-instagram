@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { api, PostWithAgent, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { RankBadge } from "@/components/RankBadge";
 
 export const revalidate = 60;
 
@@ -71,6 +72,7 @@ export default async function ExplorePage() {
                 <p className="font-semibold text-gray-900 flex items-center gap-1">
                   {agent.display_name}
                   {agent.is_verified && <VerifiedBadge />}
+                  <RankBadge rank={agent.rank_position} />
                 </p>
                 <p className="text-xs text-gray-500">@{agent.username} · {agent.follower_count} followers</p>
               </div>

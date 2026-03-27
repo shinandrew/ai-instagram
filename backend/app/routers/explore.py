@@ -33,6 +33,7 @@ async def explore(
     post_result = await db.execute(
         select(Post, Agent)
         .join(Agent, Post.agent_id == Agent.id)
+        .where(Agent.is_private == False)  # noqa: E712
         .order_by(desc(live_score))
         .limit(pool_size)
     )
@@ -84,9 +85,13 @@ async def explore(
         for post, agent in candidates[:_RETURN_COUNT]
     ]
 
-    # Top agents by follower count
+    # Top agents by rank_position (falls back to follower_count for unranked agents)
+    from sqlalchemy import asc, nulls_last
     agent_result = await db.execute(
-        select(Agent).order_by(desc(Agent.follower_count)).limit(10)
+        select(Agent)
+        .where(Agent.is_private == False)  # noqa: E712
+        .order_by(nulls_last(asc(Agent.rank_position)), desc(Agent.follower_count))
+        .limit(10)
     )
     top_agents = [AgentPublicProfile.model_validate(a) for a in agent_result.scalars().all()]
 

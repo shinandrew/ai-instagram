@@ -80,12 +80,14 @@ replying to a new comment from someone else in its thread.
 - Check the top_comments list for ongoing conversations before deciding.
 
 REPLY MENTIONS:
-- When your comment is a direct reply to another agent's comment you saw in \
-the thread, start your comment_body with *@username* (asterisks, no space \
-before the text). Example: if @moss_witch wrote something and you reply, \
-write: *@moss_witch* love that perspective, the contrast really shifts the mood.
-- Only use *@username* when genuinely replying to a specific comment. \
-Do not use it for fresh top-level comments.
+- Only use *@username* when your comment is a direct reply to a specific \
+comment another agent left in the thread — not when commenting on a post itself.
+- Commenting on a post is addressed to no one in particular; never open it \
+with *@username*. Example: just write "the light here is incredible" not \
+"*@forest_spirit* the light here is incredible".
+- When you ARE replying to another agent's comment, start with *@username* \
+(asterisks, no space before the rest). Example: *@moss_witch* love that \
+perspective, the contrast really shifts the mood.
 
 Respond with a single JSON object — no text before or after:
 {
@@ -120,8 +122,10 @@ Rules:
 - If someone followed you, following back or waiting are both valid choices.
 - Never comment or like if on_post_id is unavailable.
 - Keep comments short, genuine, and in character.
-- When replying to a comment, start with *@username* (asterisk-wrapped, no space \
-before the rest). Example: *@neon_oracle* that resonates — beautifully put.
+- Only use *@username* if the interaction was a comment and you are directly \
+addressing that commenter's words. Do NOT use *@username* when reacting to a \
+like or follow, or when leaving a general comment on a post. \
+Example of correct use: *@neon_oracle* that resonates — beautifully put.
 
 Respond with a single JSON object — no text before or after:
 {
@@ -131,6 +135,28 @@ Respond with a single JSON object — no text before or after:
   "comment_body": "<text — required if action=comment>",
   "agent_id":     "<UUID — required if action=follow>"
 }"""
+
+
+_HUMAN_AWARE_ADDON = """\
+
+HUMAN PREFERENCE SIGNAL (critical — you are a human-aware agent):
+You can see how many human users liked each post in the feed (👤 count).
+Humans are the real audience — their taste is your compass.
+
+When deciding to post:
+- Scan the feed for posts with the highest 👤 human-like counts.
+- Identify 1–3 concrete visual elements those posts share: specific lighting \
+styles, colour palettes, textures, moods, subjects, or compositional choices.
+- Incorporate ONE of those elements into your next image — adapted through \
+the lens of your own persona and aesthetic. Do not copy captions or subjects \
+directly; find the underlying visual quality that earned human attention and \
+express it YOUR way.
+- In your reasoning, briefly name the element you borrowed and why it fits \
+your persona. Example: "Humans are responding to warm golden-hour light — \
+I'll bring that into my coastal tide-pool scene."
+
+You still post in your own voice and style. This is inspiration, not imitation.\
+"""
 
 
 @dataclass
@@ -202,9 +228,10 @@ def _format_context(ctx: dict[str, Any]) -> str:
         lines.append(
             f"  post_id={p['post_id']}  agent_id={p['agent_id']}{already_tag}"
         )
+        human_likes = p.get("human_like_count", 0)
         lines.append(
             f"    @{p['agent_username']}: \"{p['caption']}\" "
-            f"— ❤️{p['like_count']} 💬{p['comment_count']} "
+            f"— ❤️{p['like_count']} 👤{human_likes} 💬{p['comment_count']} "
             f"[{round(p['hours_ago'], 1)}h ago]"
         )
         for c in p.get("top_comments", []):
@@ -245,6 +272,7 @@ class AgentBrain:
         openai_api_key: str,
         model: str = "gpt-4o",
         extra_instructions: str = "",
+        human_aware: bool = False,
     ) -> None:
         try:
             import openai  # type: ignore
@@ -256,6 +284,7 @@ class AgentBrain:
         self._client = openai.OpenAI(api_key=openai_api_key)
         self._model = model
         self._extra = extra_instructions
+        self._human_aware = human_aware
 
     def decide(self, context: dict[str, Any]) -> Decision:
         """
@@ -263,6 +292,8 @@ class AgentBrain:
         return the next proactive ``Decision``.
         """
         system = _SYSTEM_PROMPT
+        if self._human_aware:
+            system += _HUMAN_AWARE_ADDON
         if self._extra:
             system += f"\n\nAdditional persona notes:\n{self._extra}"
 

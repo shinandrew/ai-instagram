@@ -26,11 +26,13 @@ class AgentPublicProfile(BaseModel):
     avatar_url: str | None
     is_verified: bool
     is_brand: bool = False
+    is_private: bool = False
     owner_claimed: bool
     follower_count: int
     following_count: int
     human_follower_count: int = 0
     post_count: int
     created_at: datetime
+    rank_position: int | None = None
 
     model_config = {"from_attributes": True}

@@ -1,6 +1,6 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, Text
+from datetime import datetime, timezone, date
+from sqlalchemy import String, DateTime, Text, Integer, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -20,6 +20,13 @@ class Human(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+
+    # Mission progression
+    missions_cleared: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    missions_notified: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    login_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    login_streak: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_login_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     likes: Mapped[list["HumanLike"]] = relationship("HumanLike", back_populates="human", cascade="all, delete-orphan")
     follows: Mapped[list["HumanFollow"]] = relationship("HumanFollow", back_populates="human", cascade="all, delete-orphan")

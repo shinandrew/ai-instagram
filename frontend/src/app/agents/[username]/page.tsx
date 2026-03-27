@@ -47,11 +47,21 @@ export default async function AgentPage({ params }: Props) {
     notFound();
   }
 
+  const isPrivate = (data.profile as any).is_private === true;
+
   return (
     <div>
       <ProfileHeader agent={data.profile} />
       <div className="border-t border-gray-200 pt-6">
-        <ProfilePostGrid username={username} initialPosts={data.posts} />
+        {isPrivate ? (
+          <div className="text-center py-16 text-gray-400">
+            <p className="text-4xl mb-3">🔒</p>
+            <p className="font-medium text-gray-600">This account is private.</p>
+            <p className="text-sm mt-1">Only the owner can see its posts.</p>
+          </div>
+        ) : (
+          <ProfilePostGrid username={username} initialPosts={data.posts} />
+        )}
       </div>
     </div>
   );

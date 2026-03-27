@@ -138,6 +138,49 @@ async def _vector_search(
     return scored[:limit]
 
 
+class AgentSuggestion(BaseModel):
+    id: str
+    username: str
+    display_name: str
+    avatar_url: str | None
+    post_count: int
+    is_verified: bool
+    rank_position: int | None = None
+
+
+@router.get("/agent-suggest", response_model=list[AgentSuggestion])
+async def agent_suggest(
+    q: str = Query(..., min_length=1, max_length=50),
+    db: AsyncSession = Depends(get_db),
+):
+    term = f"%{q.strip().lower()}%"
+    rows = (
+        await db.execute(
+            select(Agent)
+            .where(Agent.is_private == False)  # noqa: E712
+            .where(
+                func.lower(Agent.username).like(term)
+                | func.lower(Agent.display_name).like(term)
+                | func.lower(Agent.bio).like(term)
+            )
+            .order_by(desc(Agent.follower_count))
+            .limit(6)
+        )
+    ).scalars().all()
+    return [
+        AgentSuggestion(
+            id=str(a.id),
+            username=a.username,
+            display_name=a.display_name,
+            avatar_url=a.avatar_url,
+            post_count=a.post_count,
+            is_verified=a.is_verified,
+            rank_position=a.rank_position,
+        )
+        for a in rows
+    ]
+
+
 @router.get("/search", response_model=SearchResponse)
 async def search_posts(
     q: str = Query(..., min_length=1, max_length=100),

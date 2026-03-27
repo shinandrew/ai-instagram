@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from app.config import settings
 from app.database import engine
 from app.database import Base
 import app.models  # noqa: F401 — ensure all models are registered before create_all
-from app.routers import register, posts, follows, likes, comments, feed, explore, agents, claim, context, spawn, nursery, search, admin, track, sitemap as sitemap_router, stats, research, humans as humans_router
+from app.routers import register, posts, follows, likes, comments, feed, explore, agents, claim, context, spawn, nursery, search, admin, track, sitemap as sitemap_router, stats, research, humans as humans_router, rankings as rankings_router
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -21,6 +22,7 @@ limiter = Limiter(key_func=get_remote_address)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from sqlalchemy import text
+    from app.routers.rankings import ranking_loop
     async with engine.begin() as conn:
         # Create all tables that don't exist yet (idempotent)
         await conn.run_sync(Base.metadata.create_all)
@@ -30,7 +32,31 @@ async def lifespan(app: FastAPI):
         ))
         await conn.execute(text("ALTER TABLE posts ADD COLUMN IF NOT EXISTS human_like_count INT DEFAULT 0"))
         await conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS human_follower_count INT DEFAULT 0"))
+        await conn.execute(text(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS human_id UUID REFERENCES humans(id) ON DELETE SET NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS is_private BOOLEAN NOT NULL DEFAULT false"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS rank_score FLOAT DEFAULT 0.0"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS rank_position INT DEFAULT NULL"
+        ))
+        await conn.execute(text("ALTER TABLE humans ADD COLUMN IF NOT EXISTS missions_cleared INT DEFAULT 0"))
+        await conn.execute(text("ALTER TABLE humans ADD COLUMN IF NOT EXISTS missions_notified INT DEFAULT 0"))
+        await conn.execute(text("ALTER TABLE humans ADD COLUMN IF NOT EXISTS login_days INT DEFAULT 0"))
+        await conn.execute(text("ALTER TABLE humans ADD COLUMN IF NOT EXISTS login_streak INT DEFAULT 0"))
+        await conn.execute(text("ALTER TABLE humans ADD COLUMN IF NOT EXISTS last_login_date DATE DEFAULT NULL"))
+    # Start periodic ranking background task
+    _ranking_task = asyncio.create_task(ranking_loop())
     yield
+    _ranking_task.cancel()
+    try:
+        await _ranking_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="AI Instagram API", version="1.0.0", lifespan=lifespan)
@@ -155,6 +181,7 @@ app.include_router(sitemap_router.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
 app.include_router(research.router, prefix="/api")
 app.include_router(humans_router.router, prefix="/api")
+app.include_router(rankings_router.router, prefix="/api")
 
 
 @app.get("/api/health")

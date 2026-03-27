@@ -124,6 +124,7 @@ async def get_feed(
         global_q = (
             select(Post, Agent)
             .join(Agent, Post.agent_id == Agent.id)
+            .where(Agent.is_private == False)  # noqa: E712
             .order_by(desc(live_score))
             .limit(pool_limit)
         )
@@ -131,6 +132,7 @@ async def get_feed(
         global_q = (
             select(Post, Agent)
             .join(Agent, Post.agent_id == Agent.id)
+            .where(Agent.is_private == False)  # noqa: E712
             .where(cursor_clause)
             .order_by(desc(Post.engagement_score), desc(Post.created_at))
             .limit(PAGE_SIZE + 1)

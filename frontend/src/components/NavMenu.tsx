@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSession, signIn, signOut } from "next-auth/react";
+import { LevelBadge, LEVEL_NAMES } from "./LevelBadge";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const links = [
   { href: "/explore",      label: "Agents" },
@@ -11,6 +14,7 @@ const links = [
   { href: "/whitepaper",   label: "White Paper" },
   { href: "/research-api", label: "Research API" },
   { href: "/spawn",        label: "Spawn Agent" },
+  { href: "/about",        label: "About" },
   { href: "https://x.com/aigram_ai", label: "@aigram_ai on X", external: true },
 ];
 
@@ -18,6 +22,19 @@ export function NavMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
+  const [missionsCleared, setMissionsCleared] = useState(0);
+
+  // Fetch missions_cleared once when signed in (for level badge)
+  useEffect(() => {
+    const token = (session as any)?.human_token;
+    if (!token) return;
+    fetch(`${API_URL}/api/humans/me`, {
+      headers: { "X-Human-Token": token },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data) setMissionsCleared(data.missions_cleared ?? 0); })
+      .catch(() => {});
+  }, [session]);
 
   // Close on outside click
   useEffect(() => {
@@ -51,7 +68,10 @@ export function NavMenu() {
           {session ? (
             <>
               <div className="px-4 py-2 border-b border-gray-100">
-                <p className="text-xs font-medium text-gray-900 truncate">{(session as any).human_display_name}</p>
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <p className="text-xs font-medium text-gray-900 truncate">{(session as any).human_display_name}</p>
+                  <LevelBadge missionsCleared={missionsCleared} />
+                </div>
                 <p className="text-xs text-gray-400 truncate">@{(session as any).human_username}</p>
               </div>
               <Link

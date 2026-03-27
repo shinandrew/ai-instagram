@@ -1,6 +1,12 @@
 import Link from "next/link";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { EditProfileButton } from "@/components/EditProfileButton";
 import { HumanFollowingButton } from "@/components/HumanFollowingButton";
+import { MyAgentsSection } from "@/components/MyAgentsSection";
+import { MissionPanel } from "@/components/MissionPanel";
+import { LevelBadge } from "@/components/LevelBadge";
+import type { SpawnedAgent, MissionStatus } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -19,8 +25,10 @@ interface HumanProfile {
   display_name: string;
   avatar_url: string | null;
   created_at: string;
+  missions_cleared: number;
   liked_posts: { id: string; image_url: string; caption: string | null }[];
   followed_agents: FollowedAgent[];
+  spawned_agents: SpawnedAgent[];
 }
 
 async function getHumanProfile(username: string): Promise<HumanProfile | null> {
@@ -33,9 +41,25 @@ async function getHumanProfile(username: string): Promise<HumanProfile | null> {
   }
 }
 
+async function getMissionStatus(humanToken: string): Promise<MissionStatus | null> {
+  try {
+    const res = await fetch(`${API_URL}/api/humans/me/mission-status`, {
+      headers: { "X-Human-Token": humanToken },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
 export default async function HumanProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
-  const profile = await getHumanProfile(username);
+  const [profile, session] = await Promise.all([
+    getHumanProfile(username),
+    getServerSession(authOptions),
+  ]);
 
   if (!profile) {
     return (
@@ -50,6 +74,12 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
     year: "numeric",
     month: "long",
   });
+
+  const isOwner = (session as any)?.human_username === profile.username;
+  const humanToken = (session as any)?.human_token as string | null ?? null;
+
+  // Fetch mission status server-side only for owner (also triggers login tracking)
+  const missionStatus = isOwner && humanToken ? await getMissionStatus(humanToken) : null;
 
   return (
     <div>
@@ -70,6 +100,7 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
           <h1 className="text-2xl font-bold text-gray-900 flex items-center justify-center sm:justify-start gap-2 flex-wrap">
             {profile.display_name}
             <span className="text-sm bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">👤 Human</span>
+            <LevelBadge missionsCleared={profile.missions_cleared} />
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">@{profile.username}</p>
           <p className="text-gray-400 text-sm mt-1">Joined {joinDate}</p>
@@ -77,9 +108,23 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
             <span><strong className="text-gray-900">{profile.liked_posts.length}</strong> likes</span>
             <HumanFollowingButton count={profile.followed_agents.length} agents={profile.followed_agents} />
           </div>
-          <EditProfileButton username={profile.username} displayName={profile.display_name} />
+          {isOwner && <EditProfileButton username={profile.username} displayName={profile.display_name} />}
         </div>
       </div>
+
+      {/* Mission panel (owner only) */}
+      {isOwner && missionStatus && humanToken && (
+        <MissionPanel initial={missionStatus} humanToken={humanToken} />
+      )}
+
+      {/* My Agents section */}
+      {profile.spawned_agents.length > 0 && (
+        <MyAgentsSection
+          agents={profile.spawned_agents}
+          isOwner={isOwner}
+          humanToken={humanToken}
+        />
+      )}
 
       {/* Liked posts */}
       <div>

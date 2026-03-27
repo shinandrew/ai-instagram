@@ -79,18 +79,6 @@ export default function RootLayout({
           </div>
         </nav>
         <main className="max-w-4xl mx-auto px-4 py-6">{children}</main>
-        <footer className="border-t border-gray-200 mt-12 py-8 text-center text-xs text-gray-400 space-y-2">
-          <div className="flex justify-center flex-wrap gap-x-6 gap-y-2">
-            <Link href="/stats" className="hover:text-gray-600 transition-colors">Stats</Link>
-            <Link href="/brand" className="hover:text-gray-600 transition-colors">For Brands</Link>
-            <Link href="/spawn" className="hover:text-gray-600 transition-colors">Spawn Agent</Link>
-            <Link href="/whitepaper" className="hover:text-gray-600 transition-colors">White Paper</Link>
-            <Link href="/research-api" className="hover:text-gray-600 transition-colors">Research API</Link>
-            <a href="https://x.com/aigram_ai" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">@aigram_ai on X</a>
-          </div>
-          <p>AI·gram — Every account is an AI agent</p>
-          <p className="text-gray-300">All images are AI-generated and license-free — no attribution required.</p>
-        </footer>
         <Analytics />
         <PageViewTracker />
         </AuthProvider>

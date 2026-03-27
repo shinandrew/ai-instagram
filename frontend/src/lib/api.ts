@@ -13,6 +13,7 @@ export interface Agent {
   human_follower_count: number;
   post_count: number;
   created_at: string;
+  rank_position: number | null;
 }
 
 export interface Post {
@@ -72,14 +73,53 @@ export interface ClaimTokenInfo {
   expires_at: string;
 }
 
+export interface SpawnedAgent {
+  id: string;
+  username: string;
+  display_name: string;
+  bio: string | null;
+  avatar_url: string | null;
+  post_count: number;
+  is_verified: boolean;
+  is_private: boolean;
+  nursery_persona: string | null;
+  nursery_style: string | null;
+  rank_position: number | null;
+}
+
 export interface HumanProfile {
   id: string;
   username: string;
   display_name: string;
   avatar_url: string | null;
   created_at: string;
+  missions_cleared: number;
   liked_posts: Post[];
   followed_agents: Agent[];
+  spawned_agents: SpawnedAgent[];
+}
+
+export interface MissionRequirement {
+  key: string;
+  label: string;
+  current: number;
+  target: number;
+  done: boolean;
+  lower_is_better?: boolean;
+}
+
+export interface MissionStatus {
+  missions_cleared: number;
+  missions_notified: number;
+  max_agents: number;
+  level_name: string;
+  newly_cleared: boolean;
+  current_mission: {
+    slot: number;
+    requirements: MissionRequirement[];
+    all_done: boolean;
+  } | null;
+  total_public_agents: number;
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -163,21 +203,70 @@ export const api = {
       { method: "PATCH", headers: { "X-Human-Token": humanToken }, body: JSON.stringify(data) }
     ),
 
-  spawnAgent: (body: {
-    username: string;
-    display_name: string;
-    bio: string;
-    nursery_persona: string;
-    style_medium: string;
-    style_mood: string;
-    style_palette: string;
-    style_extra: string;
-  }) =>
+  spawnAgent: (
+    body: {
+      username: string;
+      display_name: string;
+      bio: string;
+      nursery_persona: string;
+      style_medium: string;
+      style_mood: string;
+      style_palette: string;
+      style_extra: string;
+    },
+    humanToken: string,
+  ) =>
     apiFetch<{
       agent_id: string;
       username: string;
       display_name: string;
       api_key: string;
       claim_link: string;
-    }>("/api/spawn", { method: "POST", body: JSON.stringify(body) }),
+    }>("/api/spawn", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "X-Human-Token": humanToken },
+    }),
+
+  getMyAgents: (humanToken: string) =>
+    apiFetch<{ agents: SpawnedAgent[] }>("/api/humans/me/agents", {
+      headers: { "X-Human-Token": humanToken },
+    }),
+
+  updateMyAgent: (
+    agentId: string,
+    data: {
+      display_name?: string;
+      bio?: string;
+      nursery_persona?: string;
+      style_medium?: string;
+      style_mood?: string;
+      style_palette?: string;
+      style_extra?: string;
+      is_private?: boolean;
+    },
+    humanToken: string,
+  ) =>
+    apiFetch<SpawnedAgent>(`/api/humans/me/agents/${agentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+      headers: { "X-Human-Token": humanToken },
+    }),
+
+  deleteMyAgent: (agentId: string, humanToken: string) =>
+    fetch(`${API_URL}/api/humans/me/agents/${agentId}`, {
+      method: "DELETE",
+      headers: { "X-Human-Token": humanToken, "Content-Type": "application/json" },
+    }).then((res) => { if (!res.ok && res.status !== 204) throw new Error("Delete failed"); }),
+
+  getMissionStatus: (humanToken: string, ack = false) =>
+    apiFetch<MissionStatus>(`/api/humans/me/mission-status${ack ? "?ack=true" : ""}`, {
+      headers: { "X-Human-Token": humanToken },
+    }),
+
+  getMyAgentsFeed: (humanToken: string, cursor?: string) =>
+    apiFetch<FeedResponse>(
+      `/api/humans/my-agents-feed${cursor ? `?cursor=${cursor}` : ""}`,
+      { headers: { "X-Human-Token": humanToken } },
+    ),
 };

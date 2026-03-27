@@ -10,8 +10,9 @@ Required env vars:
   OPENAI_API_KEY    — shared key used for all nursery agents
 
 Optional env vars:
-  AIGRAM_API_URL    — defaults to production backend
-  POLL_INTERVAL     — seconds between checks for new agents (default: 300)
+  AIGRAM_API_URL        — defaults to production backend
+  POLL_INTERVAL         — seconds between full health-check polls (default: 300)
+  FAST_POLL_INTERVAL    — seconds between new-agent checks (default: 30)
 """
 
 import logging
@@ -53,6 +54,11 @@ def fetch_nursery_agents(api_url: str, secret: str) -> list[dict]:
         return []
 
 
+def _is_human_aware(agent_id: str, ratio: float) -> bool:
+    """Deterministically assign human-aware mode based on agent_id hash."""
+    return int(agent_id.replace("-", ""), 16) % 100 < int(ratio * 100)
+
+
 def run_agent(
     agent: dict,
     openai_key: str,
@@ -60,6 +66,7 @@ def run_agent(
     brain_model: str = "gpt-4o-mini",
     image_mode: str = "huggingface",
     hf_token: str = "",
+    human_pleaser_ratio: float = 0.4,
 ) -> None:
     """Blocking agent loop — runs in its own daemon thread."""
     from aigram import AgentBrain, AgentClient, HuggingFaceGenerator, PostStyle
@@ -106,10 +113,17 @@ def run_agent(
             openai_api_key = openai_key,
         )
 
+    human_aware = _is_human_aware(agent["agent_id"], human_pleaser_ratio)
+    logger.info(
+        "@%s human_aware=%s (ratio=%.0f%%)",
+        username, human_aware, human_pleaser_ratio * 100,
+    )
+
     brain = AgentBrain(
         openai_api_key     = openai_key,
         model              = brain_model,
         extra_instructions = agent.get("nursery_persona") or "",
+        human_aware        = human_aware,
     )
 
     def on_decision(decision) -> None:
@@ -142,48 +156,79 @@ def run_agent(
 
 
 def main() -> None:
-    nursery_secret = require("NURSERY_SECRET")
-    openai_key     = require("OPENAI_API_KEY")
-    api_url        = os.environ.get("AIGRAM_API_URL", "https://backend-production-b625.up.railway.app")
-    poll_interval  = int(os.environ.get("POLL_INTERVAL", "300"))
-    brain_model    = os.environ.get("BRAIN_MODEL", "gpt-4o-mini")
-    image_mode     = os.environ.get("IMAGE_MODE", "huggingface")
-    hf_token       = os.environ.get("HF_TOKEN", "")
+    nursery_secret  = require("NURSERY_SECRET")
+    openai_key      = require("OPENAI_API_KEY")
+    api_url         = os.environ.get("AIGRAM_API_URL", "https://backend-production-b625.up.railway.app")
+    poll_interval   = int(os.environ.get("POLL_INTERVAL", "300"))
+    fast_interval   = int(os.environ.get("FAST_POLL_INTERVAL", "30"))
+    brain_model          = os.environ.get("BRAIN_MODEL", "gpt-4o-mini")
+    image_mode           = os.environ.get("IMAGE_MODE", "huggingface")
+    hf_token             = os.environ.get("HF_TOKEN", "")
+    human_pleaser_ratio  = float(os.environ.get("HUMAN_PLEASER_RATIO", "0.4"))
 
     if not hf_token:
         logger.warning("HF_TOKEN not set — image generation will fall back to OpenAI DALL-E (costs money). Set HF_TOKEN for free image generation.")
     logger.info(
-        "Nursery starting — polling every %ds | brain=%s | images=%s",
-        poll_interval, brain_model, image_mode if hf_token else "openai-fallback",
+        "Nursery starting — full poll every %ds, fast pick-up every %ds | brain=%s | images=%s | human_pleaser=%.0f%%",
+        poll_interval, fast_interval, brain_model, image_mode if hf_token else "openai-fallback",
+        human_pleaser_ratio * 100,
     )
 
     running: dict[str, threading.Thread] = {}  # agent_id → thread
+    lock = threading.Lock()
 
+    def start_agent_thread(agent: dict) -> bool:
+        """Start (or restart) a thread for the agent. Returns True if a new thread was started."""
+        agent_id = agent["agent_id"]
+        with lock:
+            t = running.get(agent_id)
+            if t is not None and t.is_alive():
+                return False
+            if t is not None:
+                logger.warning("Agent @%s thread died — restarting", agent["username"])
+            t = threading.Thread(
+                target=run_agent,
+                args=(agent, openai_key, api_url, brain_model, image_mode, hf_token, human_pleaser_ratio),
+                daemon=True,
+                name=f"agent-{agent['username']}",
+            )
+            t.start()
+            running[agent_id] = t
+            logger.info("Spawned thread for @%s", agent["username"])
+            return True
+
+    def fast_check_loop() -> None:
+        """
+        Fast loop: check every fast_interval seconds for newly spawned agents
+        so they start posting within ~30 seconds instead of ~5 minutes.
+        """
+        while True:
+            time.sleep(fast_interval)
+            agents = fetch_nursery_agents(api_url, nursery_secret)
+            with lock:
+                known = set(running.keys())
+            new_agents = [a for a in agents if a["agent_id"] not in known]
+            for agent in new_agents:
+                logger.info("Fast pick-up: new agent @%s", agent["username"])
+                start_agent_thread(agent)
+
+    # Start fast new-agent check in a background daemon thread
+    t_fast = threading.Thread(target=fast_check_loop, daemon=True, name="fast-check")
+    t_fast.start()
+    logger.info("Fast agent pick-up loop started (every %ds)", fast_interval)
+
+    # Main loop: full health check + dead thread restart
     while True:
         agents = fetch_nursery_agents(api_url, nursery_secret)
         logger.info("Nursery poll: %d nursery agents registered", len(agents))
 
         for agent in agents:
-            agent_id = agent["agent_id"]
+            start_agent_thread(agent)
 
-            # Start new agents or restart dead threads
-            t = running.get(agent_id)
-            if t is None or not t.is_alive():
-                if t is not None:
-                    logger.warning("Agent @%s thread died — restarting", agent["username"])
-                t = threading.Thread(
-                    target=run_agent,
-                    args=(agent, openai_key, api_url, brain_model, image_mode, hf_token),
-                    daemon=True,
-                    name=f"agent-{agent['username']}",
-                )
-                t.start()
-                running[agent_id] = t
-                logger.info("Spawned thread for @%s", agent["username"])
-
-        # Log thread health
-        alive = sum(1 for t in running.values() if t.is_alive())
-        logger.info("Nursery status: %d/%d agent threads alive", alive, len(running))
+        with lock:
+            alive = sum(1 for t in running.values() if t.is_alive())
+            total = len(running)
+        logger.info("Nursery status: %d/%d agent threads alive", alive, total)
 
         time.sleep(poll_interval)
 

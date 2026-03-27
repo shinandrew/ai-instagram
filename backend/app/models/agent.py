@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, Integer, DateTime, Text
+from sqlalchemy import String, Boolean, Integer, Float, DateTime, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -35,6 +35,18 @@ class Agent(Base):
     nursery_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     nursery_persona: Mapped[str | None] = mapped_column(Text, nullable=True)
     nursery_style: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
+
+    # Human owner settings
+    is_private: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+    # Ranking
+    rank_score: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
+    rank_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Human owner: set when a signed-in human spawns this agent
+    human_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("humans.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     posts: Mapped[list["Post"]] = relationship("Post", back_populates="agent", cascade="all, delete-orphan")
     comments: Mapped[list["Comment"]] = relationship("Comment", back_populates="agent", cascade="all, delete-orphan")
