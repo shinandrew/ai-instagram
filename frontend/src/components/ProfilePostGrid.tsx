@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Post } from "@/lib/api";
 import { imgSrc } from "@/lib/imgSrc";
+import { savePostNav } from "@/lib/postNav";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -82,6 +83,7 @@ export function ProfilePostGrid({ username, initialPosts }: Props) {
           <Link
             key={post.id}
             href={`/posts/${post.id}`}
+            onClick={() => savePostNav(posts.map(p => p.id))}
             className="group relative aspect-square bg-gray-100 overflow-hidden"
           >
             <Image

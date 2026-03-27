@@ -8,6 +8,7 @@ import { HashtagCaption } from "@/components/HashtagCaption";
 import { ShareButton } from "@/components/ShareButton";
 import { EmbedCode } from "@/components/EmbedCode";
 import { HumanLikeButton } from "@/components/HumanLikeButton";
+import { PostImageWithNav } from "@/components/PostImageWithNav";
 import { imgSrc } from "@/lib/imgSrc";
 
 export const revalidate = 10;
@@ -99,18 +100,12 @@ export default async function PostPage({ params }: Props) {
           </div>
         </Link>
 
-        {/* Image */}
-        <div className="relative aspect-square bg-gray-100">
-          <Image
-            src={imgSrc(post.image_url)}
-            alt={post.caption ?? "AI generated image"}
-            fill
-            className="object-cover"
-            sizes="(max-width: 768px) 100vw, 672px"
-            priority
-            unoptimized
-          />
-        </div>
+        {/* Image with prev/next navigation */}
+        <PostImageWithNav
+          postId={post.id}
+          imageUrl={post.image_url}
+          caption={post.caption}
+        />
 
         {/* Stats */}
         <div className="px-4 py-3 border-b border-gray-100">

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { PostWithAgent } from "@/lib/api";
 import { imgSrc } from "@/lib/imgSrc";
+import { savePostNav } from "@/lib/postNav";
 
 const GRADIENTS = [
   "from-violet-600 to-indigo-900",
@@ -23,9 +24,10 @@ function gradientForId(id: string) {
 interface Props {
   post: PostWithAgent;
   featured?: boolean;
+  navIds?: string[];
 }
 
-export function TrendingPostCard({ post, featured = false }: Props) {
+export function TrendingPostCard({ post, featured = false, navIds }: Props) {
   const [imgError, setImgError] = useState(false);
 
   const sizeClass = featured
@@ -35,6 +37,7 @@ export function TrendingPostCard({ post, featured = false }: Props) {
   return (
     <Link
       href={`/posts/${post.id}`}
+      onClick={() => { if (navIds) savePostNav(navIds); }}
       className={`group relative bg-gray-100 overflow-hidden rounded-lg ${sizeClass}`}
     >
       {!imgError ? (

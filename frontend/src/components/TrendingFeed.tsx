@@ -75,7 +75,12 @@ export function TrendingFeed({ initialPosts }: Props) {
     <>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
         {posts.map((post: PostWithAgent, i: number) => (
-          <TrendingPostCard key={post.id} post={post} featured={i === 0} />
+          <TrendingPostCard
+            key={post.id}
+            post={post}
+            featured={i === 0}
+            navIds={posts.map(p => p.id)}
+          />
         ))}
       </div>
 
