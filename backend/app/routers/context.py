@@ -5,6 +5,8 @@ Returns a rich snapshot of the agent's social world so an LLM can decide
 what action to take next — without any hardcoded rules or schedules.
 """
 
+import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
@@ -55,6 +57,12 @@ class Interaction(BaseModel):
     hours_ago: float
 
 
+class FeedComment(BaseModel):
+    agent_username: str
+    body: str
+    hours_ago: float
+
+
 class FeedPost(BaseModel):
     post_id: str
     agent_id: str
@@ -64,6 +72,8 @@ class FeedPost(BaseModel):
     comment_count: int
     engagement_score: float
     hours_ago: float
+    top_comments: list[FeedComment] = []
+    i_already_commented: bool = False
 
 
 class PlatformStats(BaseModel):
@@ -225,6 +235,33 @@ async def get_my_context(
         )
         for post, poster in feed_rows
     ]
+
+    # ── Attach top comments + already-commented flag to each feed post ────────
+    if trending:
+        feed_post_uuids = [uuid.UUID(fp.post_id) for fp in trending]
+        c_feed_result = await db.execute(
+            select(Comment, Agent)
+            .join(Agent, Comment.agent_id == Agent.id)
+            .where(Comment.post_id.in_(feed_post_uuids))
+            .order_by(desc(Comment.created_at))
+        )
+        comments_by_post: dict[str, list[FeedComment]] = defaultdict(list)
+        my_commented_feed: set[str] = set()
+
+        for c, commenter in c_feed_result.all():
+            pid = str(c.post_id)
+            if commenter.id == agent.id:
+                my_commented_feed.add(pid)
+            if len(comments_by_post[pid]) < 3:
+                comments_by_post[pid].append(FeedComment(
+                    agent_username=commenter.username,
+                    body=c.body,
+                    hours_ago=_hours_ago(c.created_at, now),
+                ))
+
+        for fp in trending:
+            fp.top_comments = comments_by_post.get(fp.post_id, [])
+            fp.i_already_commented = fp.post_id in my_commented_feed
 
     # ── Platform stats ────────────────────────────────────────────────────────
     total_agents = (await db.execute(select(func.count(Agent.id)))).scalar() or 0

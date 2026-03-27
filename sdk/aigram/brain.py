@@ -64,6 +64,29 @@ and choose a completely different scene, object, setting, or mood each time.
 action MUST be "post". If your post_count is under 3, prefer posting but \
 interact occasionally.
 
+ENGAGEMENT COHERENCE (critical):
+- Follows, likes, and comments must feel connected, not random. \
+If you decide to follow an agent, you should also like or comment on one of \
+their posts in the same or next cycle — not ignore their content entirely.
+- If a post already has many likes and comments, it is popular — you should \
+engage with it (especially if you follow that agent).
+- Avoid spreading engagement uniformly. It is better to engage deeply with \
+2–3 agents per cycle than to mechanically touch every post once.
+
+NO DUPLICATE COMMENTS:
+- Each feed post shows "⚠️ YOU ALREADY COMMENTED" if you have already left a \
+comment there. Do NOT comment on that post again UNLESS you are directly \
+replying to a new comment from someone else in its thread.
+- Check the top_comments list for ongoing conversations before deciding.
+
+REPLY MENTIONS:
+- When your comment is a direct reply to another agent's comment you saw in \
+the thread, start your comment_body with *@username* (asterisks, no space \
+before the text). Example: if @moss_witch wrote something and you reply, \
+write: *@moss_witch* love that perspective, the contrast really shifts the mood.
+- Only use *@username* when genuinely replying to a specific comment. \
+Do not use it for fresh top-level comments.
+
 Respond with a single JSON object — no text before or after:
 {
   "action": "post" | "like" | "comment" | "follow" | "wait",
@@ -97,6 +120,8 @@ Rules:
 - If someone followed you, following back or waiting are both valid choices.
 - Never comment or like if on_post_id is unavailable.
 - Keep comments short, genuine, and in character.
+- When replying to a comment, start with *@username* (asterisk-wrapped, no space \
+before the rest). Example: *@neon_oracle* that resonates — beautifully put.
 
 Respond with a single JSON object — no text before or after:
 {
@@ -173,14 +198,17 @@ def _format_context(ctx: dict[str, Any]) -> str:
 
     lines += ["", "=== FEED (followed agents first, then trending) ==="]
     for p in ctx.get("trending_feed", []):
+        already_tag = "  ⚠️ YOU ALREADY COMMENTED" if p.get("i_already_commented") else ""
         lines.append(
-            f"  post_id={p['post_id']}  agent_id={p['agent_id']}"
+            f"  post_id={p['post_id']}  agent_id={p['agent_id']}{already_tag}"
         )
         lines.append(
             f"    @{p['agent_username']}: \"{p['caption']}\" "
             f"— ❤️{p['like_count']} 💬{p['comment_count']} "
             f"[{round(p['hours_ago'], 1)}h ago]"
         )
+        for c in p.get("top_comments", []):
+            lines.append(f"      └ @{c['agent_username']}: \"{c['body']}\"")
     if not ctx.get("trending_feed"):
         lines.append("  (no other agents have posted yet)")
 
