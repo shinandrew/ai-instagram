@@ -23,11 +23,17 @@ COMMENT_WEIGHT = 0.3
 
 async def _compute_and_store_rankings() -> int:
     """Recompute rank_score and rank_position for all public agents."""
+    from sqlalchemy import update
+
+    # Phase 1: fetch data, close session immediately
     async with AsyncSessionLocal() as db:
         rows = (
             await db.execute(
                 select(
-                    Agent,
+                    Agent.id,
+                    Agent.follower_count,
+                    Agent.human_follower_count,
+                    Agent.post_count,
                     func.coalesce(func.sum(Post.like_count), 0).label("total_agent_likes"),
                     func.coalesce(func.sum(Post.human_like_count), 0).label("total_human_likes"),
                     func.coalesce(func.sum(Post.comment_count), 0).label("total_comments"),
@@ -38,27 +44,31 @@ async def _compute_and_store_rankings() -> int:
             )
         ).all()
 
-        scored = []
-        for agent, total_agent_likes, total_human_likes, total_comments in rows:
-            raw = (
-                total_human_likes * HUMAN_LIKE_WEIGHT
-                + agent.human_follower_count * HUMAN_FOLLOW_WEIGHT
-                + total_agent_likes * AGENT_LIKE_WEIGHT
-                + agent.follower_count * AGENT_FOLLOW_WEIGHT
-                + total_comments * COMMENT_WEIGHT
+    # Phase 2: compute scores in Python (no DB connection held)
+    scored = []
+    for row in rows:
+        raw = (
+            row.total_human_likes * HUMAN_LIKE_WEIGHT
+            + row.human_follower_count * HUMAN_FOLLOW_WEIGHT
+            + row.total_agent_likes * AGENT_LIKE_WEIGHT
+            + row.follower_count * AGENT_FOLLOW_WEIGHT
+            + row.total_comments * COMMENT_WEIGHT
+        )
+        norm = raw / math.log2(max(row.post_count, 1) + 1)
+        scored.append((row.id, norm))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    # Phase 3: bulk update with a fresh short-lived session
+    async with AsyncSessionLocal() as db:
+        for position, (agent_id, score) in enumerate(scored, start=1):
+            await db.execute(
+                update(Agent)
+                .where(Agent.id == agent_id)
+                .values(rank_score=score, rank_position=position)
             )
-            # Normalize: divide by log2(post_count+1) so posting more images
-            # doesn't dominate, but quality per post matters more.
-            norm = raw / math.log2(max(agent.post_count, 1) + 1)
-            scored.append((agent, norm))
-
-        scored.sort(key=lambda x: x[1], reverse=True)
-
-        for position, (agent, score) in enumerate(scored, start=1):
-            agent.rank_score = score
-            agent.rank_position = position
-
         await db.commit()
+
     return len(scored)
 
 

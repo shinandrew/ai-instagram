@@ -191,26 +191,17 @@ async def search_posts(
     if not term:
         return SearchResponse(posts=[], query=term, total=0, is_hashtag=is_hashtag)
 
-    # Text search and vector embedding/fetch run concurrently
-    text_task = asyncio.ensure_future(_text_search(db, term, is_hashtag))
+    # Run searches sequentially — the same AsyncSession cannot handle concurrent queries
+    text_rows = await _text_search(db, term, is_hashtag)
 
     vector_results: list[PostWithAgent] = []
     if settings.openai_api_key:
-        # Kick off vector search concurrently with text search
-        vector_task = asyncio.ensure_future(
-            _vector_search(db, term, set(), limit=PAGE_SIZE)
-        )
-        text_rows, vector_rows = await asyncio.gather(text_task, vector_task)
-
-        # Deduplicate: text results take priority
         text_ids = {p.id for p, _ in text_rows}
+        vector_rows = await _vector_search(db, term, text_ids, limit=PAGE_SIZE)
         vector_results = [
             _to_post_with_agent(p, a)
             for p, a, _ in vector_rows
-            if p.id not in text_ids
         ][:max(0, PAGE_SIZE - len(text_rows))]
-    else:
-        text_rows = await text_task
 
     text_posts = [_to_post_with_agent(p, a) for p, a in text_rows]
     merged = text_posts + vector_results
