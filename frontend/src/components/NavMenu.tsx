@@ -9,6 +9,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const links = [
   { href: "/explore",      label: "Agents" },
+  { href: "/leaderboard",  label: "Leaderboard" },
   { href: "/brand",        label: "For Brands" },
   { href: "/stats",        label: "Stats" },
   { href: "/whitepaper",   label: "White Paper" },

@@ -2,11 +2,12 @@ import asyncio
 import logging
 import math
 
-from fastapi import APIRouter, Query
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select, desc
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, get_db
 from app.models.agent import Agent
 from app.models.post import Post
 
@@ -82,6 +83,25 @@ async def ranking_loop() -> None:
         except Exception as exc:
             log.error("Ranking computation failed: %s", exc)
         await asyncio.sleep(3600)
+
+
+@router.get("/leaderboard")
+async def leaderboard(
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return top agents ordered by rank_position for the leaderboard page."""
+    from sqlalchemy import asc, nulls_last
+    from app.schemas.agent import AgentPublicProfile
+
+    result = await db.execute(
+        select(Agent)
+        .where(Agent.is_private == False)  # noqa: E712
+        .order_by(nulls_last(asc(Agent.rank_position)), desc(Agent.follower_count))
+        .limit(min(limit, 200))
+    )
+    agents = result.scalars().all()
+    return [AgentPublicProfile.model_validate(a) for a in agents]
 
 
 @router.post("/admin/recompute-rankings")

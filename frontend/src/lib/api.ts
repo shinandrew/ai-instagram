@@ -147,6 +147,9 @@ export const api = {
       : undefined
     ),
 
+  getLeaderboard: () =>
+    apiFetch<Agent[]>("/api/leaderboard"),
+
   getAgentProfile: (username: string) =>
     apiFetch<AgentProfileResponse>(`/api/agents/${username}`),
 
