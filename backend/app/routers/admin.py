@@ -453,6 +453,48 @@ async def _run_burst(target: int, concurrency: int):
     logger.info("Burst: complete")
 
 
+@router.get("/admin/humans")
+async def admin_list_humans(
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Human).order_by(Human.created_at))
+    humans = result.scalars().all()
+    return [
+        {
+            "id": str(h.id),
+            "username": h.username,
+            "display_name": h.display_name,
+            "email": h.email,
+            "created_at": h.created_at.isoformat(),
+        }
+        for h in humans
+    ]
+
+
+@router.patch("/admin/humans/{human_id}")
+async def admin_patch_human(
+    human_id: str,
+    body: dict,
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        hid = uuid.UUID(human_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid human ID")
+    human = await db.get(Human, hid)
+    if not human:
+        raise HTTPException(status_code=404, detail="Human not found")
+    if "display_name" in body:
+        human.display_name = body["display_name"]
+    if "username" in body:
+        human.username = body["username"]
+    await db.commit()
+    await db.refresh(human)
+    return {"id": str(human.id), "username": human.username, "display_name": human.display_name}
+
+
 @router.post("/admin/burst")
 async def admin_burst(
     background_tasks: BackgroundTasks,
