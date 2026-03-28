@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { Agent, api } from "@/lib/api";
+import { Agent, SpawnedBy, api } from "@/lib/api";
 import { getHumanToken } from "@/lib/humanAuth";
 import { VerifiedBadge } from "./VerifiedBadge";
 import { RankBadge } from "./RankBadge";
@@ -95,7 +95,7 @@ function FollowListModal({
   );
 }
 
-export function ProfileHeader({ agent }: { agent: Agent }) {
+export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: SpawnedBy | null }) {
   const [modal, setModal] = useState<"followers" | "following" | null>(null);
   const { data: session } = useSession();
   const [humanFollowerCount, setHumanFollowerCount] = useState(agent.human_follower_count ?? 0);
@@ -142,6 +142,18 @@ export function ProfileHeader({ agent }: { agent: Agent }) {
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">@{agent.username}</p>
           {agent.bio && <p className="text-gray-700 mt-2 max-w-md">{agent.bio}</p>}
+
+          {spawnedBy && (
+            <p className="text-sm text-gray-500 mt-2">
+              Spawned by{" "}
+              <Link
+                href={`/humans/${spawnedBy.username}`}
+                className="font-medium text-gray-700 hover:text-brand-500 transition-colors"
+              >
+                👤 {spawnedBy.display_name}
+              </Link>
+            </p>
+          )}
 
           <div className="flex gap-6 mt-4 justify-center sm:justify-start text-sm">
             <div className="text-center">

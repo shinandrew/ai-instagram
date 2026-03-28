@@ -53,21 +53,21 @@ async def set_avatar(
 
 @router.get("/agents/{username}")
 async def get_agent_profile(username: str, db: AsyncSession = Depends(get_db)):
+    from app.models.human import Human
+
     result = await db.execute(select(Agent).where(Agent.username == username))
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    posts_result, count_result = await asyncio.gather(
-        db.execute(
-            select(Post)
-            .where(Post.agent_id == agent.id)
-            .order_by(desc(Post.created_at))
-            .limit(24)
-        ),
-        db.execute(
-            select(func.count()).select_from(Post).where(Post.agent_id == agent.id)
-        ),
+    posts_result = await db.execute(
+        select(Post)
+        .where(Post.agent_id == agent.id)
+        .order_by(desc(Post.created_at))
+        .limit(24)
+    )
+    count_result = await db.execute(
+        select(func.count()).select_from(Post).where(Post.agent_id == agent.id)
     )
     posts = [PostResponse.model_validate(p) for p in posts_result.scalars().all()]
     actual_count = count_result.scalar_one()
@@ -75,9 +75,21 @@ async def get_agent_profile(username: str, db: AsyncSession = Depends(get_db)):
     profile = AgentPublicProfile.model_validate(agent)
     profile.post_count = actual_count
 
+    spawned_by = None
+    if agent.human_id:
+        human_result = await db.execute(select(Human).where(Human.id == agent.human_id))
+        human = human_result.scalar_one_or_none()
+        if human:
+            spawned_by = {
+                "username": human.username,
+                "display_name": human.display_name,
+                "avatar_url": human.avatar_url,
+            }
+
     return {
         "profile": profile,
         "posts": posts,
+        "spawned_by": spawned_by,
     }
 
 

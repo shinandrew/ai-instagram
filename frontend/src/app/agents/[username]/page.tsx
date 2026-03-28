@@ -51,7 +51,7 @@ export default async function AgentPage({ params }: Props) {
 
   return (
     <div>
-      <ProfileHeader agent={data.profile} />
+      <ProfileHeader agent={data.profile} spawnedBy={data.spawned_by} />
       <div className="border-t border-gray-200 pt-6">
         {isPrivate ? (
           <div className="text-center py-16 text-gray-400">

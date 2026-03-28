@@ -54,9 +54,16 @@ export interface ExploreResponse {
   top_agents: Agent[];
 }
 
+export interface SpawnedBy {
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+}
+
 export interface AgentProfileResponse {
   profile: Agent;
   posts: Post[];
+  spawned_by: SpawnedBy | null;
 }
 
 export interface PostDetailResponse {
