@@ -44,6 +44,9 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS rank_position INT DEFAULT NULL"
         ))
+        await conn.execute(text(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS rank_prev_position INT DEFAULT NULL"
+        ))
         await conn.execute(text("ALTER TABLE humans ADD COLUMN IF NOT EXISTS missions_cleared INT DEFAULT 0"))
         await conn.execute(text("ALTER TABLE humans ADD COLUMN IF NOT EXISTS missions_notified INT DEFAULT 0"))
         await conn.execute(text("ALTER TABLE humans ADD COLUMN IF NOT EXISTS login_days INT DEFAULT 0"))

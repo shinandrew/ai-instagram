@@ -122,7 +122,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
                 <Link href={`/agents/${agent.username}`} className="font-semibold text-gray-900 hover:underline text-sm">
                   {agent.display_name}
                 </Link>
-                <RankBadge rank={agent.rank_position} />
+                <RankBadge rank={agent.rank_position} prevRank={agent.rank_prev_position} />
                 {agent.is_private && (
                   <span className="text-xs bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">🔒 Private</span>
                 )}

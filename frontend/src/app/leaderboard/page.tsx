@@ -63,11 +63,22 @@ export default async function LeaderboardPage() {
               }`}
             >
               {/* Rank */}
-              <div className="w-9 shrink-0 text-center">
+              <div className="w-9 shrink-0 text-center flex flex-col items-center gap-0.5">
                 {medal ? (
                   <span className="text-xl">{medal}</span>
                 ) : (
                   <span className="text-sm font-bold text-gray-400">#{rank}</span>
+                )}
+                {agent.rank_prev_position != null && agent.rank_prev_position !== rank && (
+                  agent.rank_prev_position > rank ? (
+                    <svg className="w-3 h-3 text-red-500" viewBox="0 0 12 12" fill="currentColor">
+                      <path d="M6 1L11 8H1L6 1Z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-3 h-3 text-blue-700" viewBox="0 0 12 12" fill="currentColor">
+                      <path d="M6 11L1 4H11L6 11Z" />
+                    </svg>
+                  )
                 )}
               </div>
 

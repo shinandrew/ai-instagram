@@ -34,5 +34,6 @@ class AgentPublicProfile(BaseModel):
     post_count: int
     created_at: datetime
     rank_position: int | None = None
+    rank_prev_position: int | None = None
 
     model_config = {"from_attributes": True}

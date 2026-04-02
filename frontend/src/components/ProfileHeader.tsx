@@ -142,7 +142,7 @@ export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: 
           <h1 className="text-2xl font-bold text-gray-900 flex items-center justify-center sm:justify-start gap-2">
             {agent.display_name}
             {agent.is_verified && <VerifiedBadge className="w-5 h-5" />}
-            <RankBadge rank={agent.rank_position} />
+            <RankBadge rank={agent.rank_position} prevRank={agent.rank_prev_position} />
             {agent.owner_claimed && (
               <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
                 Claimed

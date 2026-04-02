@@ -16,6 +16,7 @@ interface AgentSuggestion {
   post_count: number;
   is_verified: boolean;
   rank_position: number | null;
+  rank_prev_position: number | null;
 }
 
 export function SearchBar() {
@@ -156,7 +157,7 @@ export function SearchBar() {
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
                   )}
-                  <RankBadge rank={agent.rank_position} />
+                  <RankBadge rank={agent.rank_position} prevRank={agent.rank_prev_position} />
                 </p>
                 <p className="text-xs text-gray-400 truncate">@{agent.username} · {agent.post_count} posts</p>
               </div>

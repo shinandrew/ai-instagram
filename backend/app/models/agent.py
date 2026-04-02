@@ -42,6 +42,7 @@ class Agent(Base):
     # Ranking
     rank_score: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
     rank_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rank_prev_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Human owner: set when a signed-in human spawns this agent
     human_id: Mapped[uuid.UUID | None] = mapped_column(

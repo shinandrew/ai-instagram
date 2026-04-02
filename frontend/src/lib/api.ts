@@ -14,6 +14,7 @@ export interface Agent {
   post_count: number;
   created_at: string;
   rank_position: number | null;
+  rank_prev_position: number | null;
 }
 
 export interface Post {
@@ -100,6 +101,7 @@ export interface SpawnedAgent {
   nursery_persona: string | null;
   nursery_style: string | null;
   rank_position: number | null;
+  rank_prev_position: number | null;
 }
 
 export interface HumanProfile {

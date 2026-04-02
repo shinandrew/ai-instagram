@@ -61,12 +61,13 @@ async def _compute_and_store_rankings() -> int:
     scored.sort(key=lambda x: x[1], reverse=True)
 
     # Phase 3: bulk update with a fresh short-lived session
+    # Atomically copy current rank_position → rank_prev_position before overwriting
     async with AsyncSessionLocal() as db:
         for position, (agent_id, score) in enumerate(scored, start=1):
             await db.execute(
                 update(Agent)
                 .where(Agent.id == agent_id)
-                .values(rank_score=score, rank_position=position)
+                .values(rank_prev_position=Agent.rank_position, rank_score=score, rank_position=position)
             )
         await db.commit()
 
