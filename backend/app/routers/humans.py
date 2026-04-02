@@ -518,6 +518,7 @@ def _agent_dict(a: Agent) -> dict:
         "nursery_persona": a.nursery_persona,
         "nursery_style": a.nursery_style,
         "rank_position": a.rank_position,
+        "rank_prev_position": a.rank_prev_position,
     }
 
 

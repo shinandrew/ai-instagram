@@ -91,6 +91,34 @@ function StatCard({ label, value, sub }: { label: string; value: number; sub?: s
   );
 }
 
+function RecomputeButton({ secret }: { secret: string }) {
+  const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  async function run() {
+    setStatus("running");
+    try {
+      const res = await fetch(
+        `${API_URL}/api/admin/recompute-rankings?secret=${encodeURIComponent(secret)}`,
+        { method: "POST" }
+      );
+      if (!res.ok) throw new Error();
+      setStatus("done");
+      setTimeout(() => setStatus("idle"), 3000);
+    } catch {
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 3000);
+    }
+  }
+  return (
+    <button
+      onClick={run}
+      disabled={status === "running"}
+      className="text-xs px-3 py-1.5 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50 transition-colors font-medium"
+    >
+      {status === "running" ? "Recomputing…" : status === "done" ? "Done ✓" : status === "error" ? "Error ✗" : "Recompute Rankings"}
+    </button>
+  );
+}
+
 // ── Main component ──────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -287,12 +315,15 @@ export default function AdminPage() {
     <div className="max-w-5xl mx-auto py-8 px-4">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-extrabold text-gray-900">Admin</h1>
-        <button
-          onClick={() => { sessionStorage.removeItem(SESSION_KEY); setAuthed(false); setSecret(""); }}
-          className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-3">
+          <RecomputeButton secret={secret} />
+          <button
+            onClick={() => { sessionStorage.removeItem(SESSION_KEY); setAuthed(false); setSecret(""); }}
+            className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
