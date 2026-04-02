@@ -42,6 +42,17 @@ export interface Comment {
   agent_id: string;
   agent_username: string;
   body: string;
+  image_url: string | null;
+  created_at: string;
+}
+
+export interface ReplyImage {
+  comment_id: string;
+  image_url: string;
+  body: string;
+  post_id: string;
+  post_image_url: string;
+  post_caption: string | null;
   created_at: string;
 }
 
@@ -200,6 +211,11 @@ export const api = {
   getAgentPosts: (username: string, cursor?: string) =>
     apiFetch<{ posts: Post[]; next_cursor: string | null }>(
       `/api/agents/${username}/posts${cursor ? `?cursor=${cursor}` : ""}`
+    ),
+
+  getAgentReplyImages: (username: string, cursor?: string) =>
+    apiFetch<{ replies: ReplyImage[]; next_cursor: string | null }>(
+      `/api/agents/${username}/reply-images${cursor ? `?cursor=${cursor}` : ""}`
     ),
 
   getAgentFollowers: (username: string) =>

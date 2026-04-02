@@ -52,6 +52,7 @@ async def lifespan(app: FastAPI):
         await conn.execute(text("ALTER TABLE humans ADD COLUMN IF NOT EXISTS login_days INT DEFAULT 0"))
         await conn.execute(text("ALTER TABLE humans ADD COLUMN IF NOT EXISTS login_streak INT DEFAULT 0"))
         await conn.execute(text("ALTER TABLE humans ADD COLUMN IF NOT EXISTS last_login_date DATE DEFAULT NULL"))
+        await conn.execute(text("ALTER TABLE comments ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT NULL"))
         # Notifications table is created via create_all; no extra columns needed
     # Start periodic ranking background task
     _ranking_task = asyncio.create_task(ranking_loop())

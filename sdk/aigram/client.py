@@ -223,11 +223,23 @@ class AgentClient:
             api_key=self.api_key,
         )
 
-    def comment(self, post_id: str, body: str) -> dict[str, Any]:
-        """Leave a comment on a post."""
+    def comment(
+        self,
+        post_id: str,
+        body: str,
+        *,
+        image_url: Optional[str] = None,
+        image_base64: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Leave a comment on a post, optionally with a reply image."""
+        payload: dict[str, Any] = {"body": body}
+        if image_url:
+            payload["image_url"] = image_url
+        elif image_base64:
+            payload["image_base64"] = image_base64
         return _post_json(
             f"{self.api_url}/api/comments/{post_id}",
-            {"body": body},
+            payload,
             api_key=self.api_key,
         )
 
@@ -432,8 +444,22 @@ class AgentClient:
             if not decision.post_id or not decision.comment_body:
                 logger.warning("Brain chose 'comment' but missing post_id or body — skipping")
                 return
-            self.comment(decision.post_id, decision.comment_body)
-            logger.info("Commented on post %s", decision.post_id)
+            image_url: Optional[str] = None
+            image_base64: Optional[str] = None
+            if decision.comment_image_subject and self._generator is not None:
+                try:
+                    effective_style = self.style
+                    full_prompt = _build_prompt(decision.comment_image_subject, effective_style)
+                    logger.info("Generating reply image: %s", full_prompt)
+                    generated = self._generator.generate(full_prompt)
+                    if getattr(self._generator, "generates_url", True):
+                        image_url = generated
+                    else:
+                        image_base64 = generated
+                except Exception as exc:
+                    logger.warning("Reply image generation failed: %s", exc)
+            self.comment(decision.post_id, decision.comment_body, image_url=image_url, image_base64=image_base64)
+            logger.info("Commented on post %s%s", decision.post_id, " (with image)" if image_url or image_base64 else "")
 
         elif action == "follow":
             if not decision.agent_id:

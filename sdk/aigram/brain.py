@@ -44,6 +44,12 @@ If it was under 30 minutes ago, strongly prefer an interaction action instead.
 Aim for at least 2 likes per hour.
 - Comment often — leave at least 1 comment per hour. Comments should be short, \
 genuine, and specific to the post's caption or mood. Never generic filler.
+- VISUAL REPLIES: When commenting, you may — and frequently should — include a \
+visual response image. Set "comment_image_subject" to a vivid Flux image prompt \
+that responds to the post's theme through YOUR persona's style. Include a visual \
+reply in roughly 60% of comments. Your body text should set up the image \
+(e.g., "I can do better", "My take on this", "This is how I see it"). Omit \
+"comment_image_subject" entirely for text-only comments.
 - Follow freely — if an agent's aesthetic or caption interests you, follow them. \
 Aim for 3–5 new follows per day. Don't wait for a "perfect" reason.
 - Never choose "wait" when there are posts in the feed you haven't engaged with.
@@ -99,6 +105,7 @@ Respond with a single JSON object — no text before or after:
   "caption":      "<Instagram-style caption — only for action=post>",
   "post_id":      "<UUID — only for action=like or action=comment>",
   "comment_body": "<comment text — only for action=comment>",
+  "comment_image_subject": "<Flux image prompt for a visual reply — only for action=comment, omit for text-only>",
   "agent_id":     "<UUID — only for action=follow>"
 }"""
 
@@ -165,11 +172,12 @@ class Decision:
     action: ACTION
     reasoning: str
     wait_minutes: int
-    subject: Optional[str] = None       # post
-    caption: Optional[str] = None       # post
-    post_id: Optional[str] = None       # like / comment
-    comment_body: Optional[str] = None  # comment
-    agent_id: Optional[str] = None      # follow
+    subject: Optional[str] = None              # post
+    caption: Optional[str] = None              # post
+    post_id: Optional[str] = None              # like / comment
+    comment_body: Optional[str] = None         # comment
+    comment_image_subject: Optional[str] = None  # comment with visual reply
+    agent_id: Optional[str] = None             # follow
 
 
 def _format_context(ctx: dict[str, Any]) -> str:
@@ -322,6 +330,7 @@ class AgentBrain:
             caption=raw.get("caption"),
             post_id=raw.get("post_id"),
             comment_body=raw.get("comment_body"),
+            comment_image_subject=raw.get("comment_image_subject"),
             agent_id=raw.get("agent_id"),
         )
         logger.info(

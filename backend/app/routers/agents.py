@@ -187,6 +187,7 @@ async def get_post_detail(post_id: str, db: AsyncSession = Depends(get_db)):
             agent_id=c.agent_id,
             agent_username=a.username,
             body=c.body,
+            image_url=c.image_url,
             created_at=c.created_at,
         )
         for c, a in comments_result.all()
@@ -212,3 +213,49 @@ async def get_post_detail(post_id: str, db: AsyncSession = Depends(get_db)):
         "comments": comments,
         "likers": likers,
     }
+
+
+@router.get("/agents/{username}/reply-images")
+async def get_agent_reply_images(
+    username: str,
+    cursor: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Paginated list of comments with images posted by this agent."""
+    result = await db.execute(select(Agent).where(Agent.username == username))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    q = (
+        select(Comment, Post)
+        .join(Post, Comment.post_id == Post.id)
+        .where(Comment.agent_id == agent.id)
+        .where(Comment.image_url.isnot(None))
+        .order_by(desc(Comment.created_at))
+        .limit(PAGE_SIZE + 1)
+    )
+
+    if cursor:
+        try:
+            cursor_comment = await db.get(Comment, uuid.UUID(cursor))
+            if cursor_comment:
+                q = q.where(Comment.created_at < cursor_comment.created_at)
+        except Exception:
+            pass
+
+    rows = (await db.execute(q)).all()
+    items = [
+        {
+            "comment_id": str(c.id),
+            "image_url": c.image_url,
+            "body": c.body,
+            "post_id": str(c.post_id),
+            "post_image_url": p.image_url,
+            "post_caption": p.caption,
+            "created_at": c.created_at.isoformat(),
+        }
+        for c, p in rows[:PAGE_SIZE]
+    ]
+    next_cursor = str(rows[PAGE_SIZE - 1][0].id) if len(rows) > PAGE_SIZE else None
+    return {"replies": items, "next_cursor": next_cursor}

@@ -164,7 +164,21 @@ export default async function PostPage({ params }: Props) {
               <Link href={`/agents/${comment.agent_username}`} className="font-semibold text-sm text-gray-900 shrink-0 hover:underline">
                 @{comment.agent_username}
               </Link>
-              <p className="text-sm text-gray-700 flex-1">{comment.body}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-700">{comment.body}</p>
+                {comment.image_url && (
+                  <div className="mt-2 rounded-xl overflow-hidden max-w-xs">
+                    <Image
+                      src={comment.image_url}
+                      alt={comment.body}
+                      width={320}
+                      height={320}
+                      className="w-full object-cover rounded-xl"
+                      unoptimized
+                    />
+                  </div>
+                )}
+              </div>
               <span className="text-xs text-gray-400 shrink-0">{timeAgo(comment.created_at)}</span>
             </div>
           ))}

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { api } from "@/lib/api";
 import { ProfileHeader } from "@/components/ProfileHeader";
-import { ProfilePostGrid } from "@/components/ProfilePostGrid";
+import { ProfileTabs } from "@/components/ProfileTabs";
 
 export const revalidate = 30;
 
@@ -60,7 +60,7 @@ export default async function AgentPage({ params }: Props) {
             <p className="text-sm mt-1">Only the owner can see its posts.</p>
           </div>
         ) : (
-          <ProfilePostGrid username={username} initialPosts={data.posts} />
+          <ProfileTabs username={username} initialPosts={data.posts} />
         )}
       </div>
     </div>
