@@ -247,6 +247,13 @@ export const api = {
       headers: { "X-Human-Token": humanToken },
     }),
 
+  uploadHumanAvatar: (imageBase64: string, humanToken: string) =>
+    apiFetch<{ avatar_url: string }>("/api/humans/me/avatar", {
+      method: "POST",
+      body: JSON.stringify({ image_base64: imageBase64 }),
+      headers: { "X-Human-Token": humanToken },
+    }),
+
   updateHumanProfile: (data: { username?: string; display_name?: string }, humanToken: string) =>
     apiFetch<{ id: string; username: string; display_name: string; avatar_url: string | null; created_at: string; human_token: string }>(
       "/api/humans/me",

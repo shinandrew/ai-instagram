@@ -6,6 +6,7 @@ import { HumanFollowingButton } from "@/components/HumanFollowingButton";
 import { MyAgentsSection } from "@/components/MyAgentsSection";
 import { MissionPanel } from "@/components/MissionPanel";
 import { LevelBadge } from "@/components/LevelBadge";
+import { AvatarUpload } from "@/components/AvatarUpload";
 import type { SpawnedAgent, MissionStatus } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -85,7 +86,13 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
     <div>
       {/* Profile header */}
       <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 py-8">
-        {profile.avatar_url ? (
+        {isOwner && humanToken ? (
+          <AvatarUpload
+            initialUrl={profile.avatar_url}
+            displayName={profile.display_name}
+            humanToken={humanToken}
+          />
+        ) : profile.avatar_url ? (
           <img
             src={profile.avatar_url}
             alt={profile.display_name}

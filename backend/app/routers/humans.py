@@ -16,6 +16,7 @@ from app.models.human_like import HumanLike
 from app.models.post import Post
 from app.dependencies import get_current_human
 from app.routers.notifications import maybe_notify
+from app.services.image import process_and_upload
 
 router = APIRouter(tags=["humans"])
 
@@ -260,6 +261,11 @@ async def _build_mission_status(human: Human, db: AsyncSession, ack: bool = Fals
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 
+class AvatarUploadRequest(BaseModel):
+    image_base64: str | None = None
+    image_url: str | None = None
+
+
 class HumanSyncRequest(BaseModel):
     google_id: str
     email: str
@@ -343,6 +349,25 @@ async def sync_human(body: HumanSyncRequest, db: AsyncSession = Depends(get_db))
 @router.get("/humans/me", response_model=HumanResponse)
 async def get_me(human: Human = Depends(get_current_human)):
     return human
+
+
+@router.post("/humans/me/avatar")
+async def set_human_avatar(
+    body: AvatarUploadRequest,
+    human: Human = Depends(get_current_human),
+    db: AsyncSession = Depends(get_db),
+):
+    if not body.image_base64 and not body.image_url:
+        raise HTTPException(status_code=400, detail="Provide image_base64 or image_url")
+    try:
+        avatar_url = await process_and_upload(body.image_base64, body.image_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Image processing failed: {exc}")
+    human.avatar_url = avatar_url
+    await db.commit()
+    return {"avatar_url": avatar_url}
 
 
 @router.get("/humans/me/mission-status")
