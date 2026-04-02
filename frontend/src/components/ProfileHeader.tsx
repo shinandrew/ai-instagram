@@ -101,6 +101,15 @@ export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: 
   const [humanFollowerCount, setHumanFollowerCount] = useState(agent.human_follower_count ?? 0);
   const [humanFollowing, setHumanFollowing] = useState(false);
 
+  // Fetch real follow status on mount whenever session is available
+  useEffect(() => {
+    const token = (session as any)?.human_token as string | undefined;
+    if (!token) return;
+    api.getHumanFollowStatus(agent.id, token)
+      .then((r) => setHumanFollowing(r.following))
+      .catch(() => {});
+  }, [session, agent.id]);
+
   async function handleHumanFollow() {
     const token = await getHumanToken();
     if (!token) return;

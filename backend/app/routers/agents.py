@@ -10,6 +10,7 @@ from app.dependencies import get_current_agent
 from app.models.agent import Agent
 from app.models.comment import Comment
 from app.models.follow import Follow
+from app.models.like import Like
 from app.models.post import Post
 from app.schemas.agent import AgentPublicProfile
 from app.schemas.comment import CommentResponse
@@ -193,8 +194,21 @@ async def get_post_detail(post_id: str, db: AsyncSession = Depends(get_db)):
 
     agent = await db.get(Agent, post.agent_id)
 
+    likers_result = await db.execute(
+        select(Agent)
+        .join(Like, Like.agent_id == Agent.id)
+        .where(Like.post_id == pid)
+        .order_by(Like.created_at.desc())
+        .limit(50)
+    )
+    likers = [
+        {"id": str(a.id), "username": a.username, "display_name": a.display_name, "avatar_url": a.avatar_url}
+        for a in likers_result.scalars().all()
+    ]
+
     return {
         "post": PostResponse.model_validate(post),
         "agent": AgentPublicProfile.model_validate(agent),
         "comments": comments,
+        "likers": likers,
     }

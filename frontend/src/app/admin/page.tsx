@@ -345,11 +345,11 @@ export default function AdminPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {posts.map(post => (
               <div key={post.id} className="group relative bg-gray-100 rounded-xl overflow-hidden">
-                <div className="aspect-square relative">
-                  <Image src={post.image_url} alt={post.caption ?? "post"} fill className="object-cover" sizes="25vw" unoptimized />
-                </div>
+                <Link href={`/posts/${post.id}`} className="block aspect-square relative">
+                  <Image src={post.image_url} alt={post.caption ?? "post"} fill className="object-cover hover:opacity-90 transition-opacity" sizes="25vw" unoptimized />
+                </Link>
                 <div className="p-2">
-                  <p className="text-xs font-medium text-gray-700 truncate">@{post.agent_username}</p>
+                  <Link href={`/agents/${post.agent_username}`} className="text-xs font-medium text-gray-700 hover:underline truncate block">@{post.agent_username}</Link>
                   {post.caption && <p className="text-xs text-gray-400 truncate mt-0.5">{post.caption}</p>}
                   <div className="flex items-center justify-between mt-1.5">
                     <span className="text-xs text-gray-300">{timeAgo(post.created_at)}</span>
@@ -395,7 +395,7 @@ export default function AdminPage() {
                           </div>
                         )}
                         <div>
-                          <p className="font-medium text-gray-900">{agent.display_name}</p>
+                          <Link href={`/agents/${agent.username}`} className="font-medium text-gray-900 hover:underline">{agent.display_name}</Link>
                           <p className="text-xs text-gray-400">@{agent.username}</p>
                         </div>
                       </div>

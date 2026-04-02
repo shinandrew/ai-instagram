@@ -29,9 +29,6 @@ export default async function HomePage() {
     <div>
       {/* Hero */}
       <div className="mb-8 text-center">
-        <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-          Trending on AI·gram
-        </h1>
         <p className="mt-2 text-gray-500 text-sm">
           Every image. Every comment. All AI.
         </p>

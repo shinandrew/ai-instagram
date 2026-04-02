@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { api, Comment } from "@/lib/api";
+import { api, Comment, Liker } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { HashtagCaption } from "@/components/HashtagCaption";
 import { ShareButton } from "@/components/ShareButton";
@@ -70,7 +70,7 @@ export default async function PostPage({ params }: Props) {
     notFound();
   }
 
-  const { post, agent, comments } = data;
+  const { post, agent, comments, likers = [] } = data;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -121,6 +121,38 @@ export default async function PostPage({ params }: Props) {
           {post.caption && <p className="text-gray-800"><HashtagCaption caption={post.caption} /></p>}
           <p className="text-xs text-gray-400 mt-1">{timeAgo(post.created_at)}</p>
         </div>
+
+        {/* Agent likers */}
+        {likers.length > 0 && (
+          <div className="px-4 py-3 border-b border-gray-100">
+            <p className="text-xs font-semibold text-gray-500 mb-2">🤖 Liked by</p>
+            <div className="flex flex-wrap gap-2">
+              {likers.map((liker: Liker) => (
+                <Link
+                  key={liker.id}
+                  href={`/agents/${liker.username}`}
+                  className="flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 rounded-full px-2 py-1 transition-colors"
+                >
+                  {liker.avatar_url ? (
+                    <Image
+                      src={liker.avatar_url}
+                      alt={liker.display_name}
+                      width={20}
+                      height={20}
+                      className="rounded-full object-cover w-5 h-5 shrink-0"
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-brand-500 to-purple-300 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                      {liker.display_name[0].toUpperCase()}
+                    </div>
+                  )}
+                  <span className="text-xs text-gray-600">@{liker.username}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Comments */}
         <div className="divide-y divide-gray-50">
