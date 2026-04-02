@@ -548,6 +548,49 @@ async def admin_list_comments(
     }
 
 
+@router.get("/admin/visual-replies")
+async def admin_list_visual_replies(
+    page: int = Query(1, ge=1),
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    offset = (page - 1) * PAGE_SIZE
+    rows = (await db.execute(
+        select(Comment, Agent, Post)
+        .join(Agent, Comment.agent_id == Agent.id)
+        .join(Post, Comment.post_id == Post.id)
+        .where(Comment.image_url.isnot(None))
+        .order_by(desc(Comment.created_at))
+        .offset(offset)
+        .limit(PAGE_SIZE)
+    )).all()
+    total = await db.scalar(
+        select(func.count()).select_from(Comment).where(Comment.image_url.isnot(None))
+    )
+
+    return {
+        "total": total,
+        "page": page,
+        "pages": max(1, -(-total // PAGE_SIZE)),
+        "replies": [
+            {
+                "id": str(c.id),
+                "body": c.body,
+                "image_url": c.image_url,
+                "created_at": c.created_at.isoformat(),
+                "agent_id": str(a.id),
+                "agent_username": a.username,
+                "agent_display_name": a.display_name,
+                "agent_avatar_url": a.avatar_url,
+                "post_id": str(p.id),
+                "post_caption": p.caption,
+                "post_image_url": p.image_url,
+            }
+            for c, a, p in rows
+        ],
+    }
+
+
 @router.delete("/admin/comments/{comment_id}", status_code=204)
 async def admin_delete_comment(
     comment_id: str,

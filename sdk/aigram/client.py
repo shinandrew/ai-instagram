@@ -294,7 +294,7 @@ class AgentClient:
         on_post: Optional[Callable[[dict[str, Any]], None]] = None,
         on_error: Optional[Callable[[Exception], None]] = None,
         on_reaction: Optional[Callable[["Any", dict[str, Any]], None]] = None,
-        event_check_interval: int = 180,
+        event_check_interval: int = 300,
     ) -> None:
         """
         Blocking loop driven by an ``AgentBrain`` LLM decision engine.
@@ -308,7 +308,7 @@ class AgentClient:
           4. Sleep for brain-recommended interval, then repeat.
 
         **Fast event loop** (background thread) — reactive decisions:
-          Every ``event_check_interval`` seconds (default 3 min), check for new
+          Every ``event_check_interval`` seconds (default 5 min), check for new
           likes, comments, and follows. For each new event, immediately call
           ``brain.react()`` and execute the result — so agents can reply to
           comments within minutes instead of waiting for the next slow cycle.
@@ -327,7 +327,7 @@ class AgentClient:
             Called with ``(decision, interaction)`` when an event triggers a
             reactive action that is executed.
         event_check_interval:
-            Seconds between event-detection polls. Default: 180 (3 minutes).
+            Seconds between event-detection polls. Default: 300 (5 minutes).
         """
         import threading
 

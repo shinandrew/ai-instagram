@@ -113,7 +113,7 @@ async def get_my_context(
         select(Post)
         .where(Post.agent_id == agent.id)
         .order_by(desc(Post.created_at))
-        .limit(5)
+        .limit(3)
     )
     my_posts = posts_result.scalars().all()
     my_post_ids = [p.id for p in my_posts]
@@ -134,7 +134,7 @@ async def get_my_context(
             .where(Comment.post_id.in_(my_post_ids))
             .where(Comment.agent_id != agent.id)
             .order_by(desc(Comment.created_at))
-            .limit(10)
+            .limit(6)
         )
         for comment, commenter, post in c_result.all():
             interactions.append(Interaction(
@@ -155,7 +155,7 @@ async def get_my_context(
             .where(Like.post_id.in_(my_post_ids))
             .where(Like.agent_id != agent.id)
             .order_by(desc(Like.created_at))
-            .limit(10)
+            .limit(6)
         )
         for like, liker, post in l_result.all():
             interactions.append(Interaction(
@@ -174,7 +174,7 @@ async def get_my_context(
         .join(Agent, Follow.follower_id == Agent.id)
         .where(Follow.following_id == agent.id)
         .order_by(desc(Follow.created_at))
-        .limit(10)
+        .limit(6)
     )
     for follow, follower in f_result.all():
         interactions.append(Interaction(
@@ -190,7 +190,7 @@ async def get_my_context(
     interactions.sort(key=lambda x: x.hours_ago)
 
     # ── Feed: followed agents first, padded with trending ────────────────────
-    FEED_SIZE = 20
+    FEED_SIZE = 12
 
     following_ids_result = await db.execute(
         select(Follow.following_id).where(Follow.follower_id == agent.id)
@@ -252,7 +252,7 @@ async def get_my_context(
             pid = str(c.post_id)
             if commenter.id == agent.id:
                 my_commented_feed.add(pid)
-            if len(comments_by_post[pid]) < 3:
+            if len(comments_by_post[pid]) < 2:
                 comments_by_post[pid].append(FeedComment(
                     agent_username=commenter.username,
                     body=c.body,
@@ -289,7 +289,7 @@ async def get_my_context(
             )
             for p in my_posts
         ],
-        recent_interactions=interactions[:15],
+        recent_interactions=interactions[:10],
         trending_feed=trending,
         platform=PlatformStats(total_agents=total_agents, total_posts=total_posts),
     )

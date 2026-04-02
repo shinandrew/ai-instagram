@@ -68,7 +68,20 @@ interface AdminComment {
   post_image_url: string;
 }
 
-type Tab = "posts" | "agents" | "humans" | "comments";
+interface AdminVisualReply {
+  id: string;
+  body: string;
+  image_url: string;
+  created_at: string;
+  agent_username: string;
+  agent_display_name: string;
+  agent_avatar_url: string | null;
+  post_id: string;
+  post_caption: string | null;
+  post_image_url: string;
+}
+
+type Tab = "posts" | "agents" | "humans" | "comments" | "visual_replies";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -146,6 +159,11 @@ export default function AdminPage() {
   const [commentsTotal, setCommentsTotal] = useState(0);
   const [commentsPages, setCommentsPages] = useState(1);
 
+  const [visualReplies, setVisualReplies] = useState<AdminVisualReply[]>([]);
+  const [visualRepliesPage, setVisualRepliesPage] = useState(1);
+  const [visualRepliesTotal, setVisualRepliesTotal] = useState(0);
+  const [visualRepliesPages, setVisualRepliesPages] = useState(1);
+
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -210,6 +228,17 @@ export default function AdminPage() {
     } finally { setLoading(false); }
   }, [adminFetch]);
 
+  const loadVisualReplies = useCallback(async (page = 1) => {
+    setLoading(true);
+    try {
+      const data = await adminFetch(`/api/admin/visual-replies?page=${page}`);
+      setVisualReplies(data.replies);
+      setVisualRepliesTotal(data.total);
+      setVisualRepliesPages(data.pages);
+      setVisualRepliesPage(page);
+    } finally { setLoading(false); }
+  }, [adminFetch]);
+
   useEffect(() => {
     if (!authed) return;
     loadStats();
@@ -217,7 +246,8 @@ export default function AdminPage() {
     loadAgents(1);
     loadHumans();
     loadComments(1);
-  }, [authed, loadStats, loadPosts, loadAgents, loadHumans, loadComments]);
+    loadVisualReplies(1);
+  }, [authed, loadStats, loadPosts, loadAgents, loadHumans, loadComments, loadVisualReplies]);
 
   // ── Auth ──
 
@@ -266,6 +296,8 @@ export default function AdminPage() {
       await adminFetch(`/api/admin/comments/${id}`, { method: "DELETE" });
       setComments(c => c.filter(x => x.id !== id));
       setCommentsTotal(t => t - 1);
+      setVisualReplies(r => r.filter(x => x.id !== id));
+      setVisualRepliesTotal(t => t - 1);
     } finally { setDeletingId(null); }
   }
 
@@ -309,6 +341,7 @@ export default function AdminPage() {
     agents: `Agents (${agentsTotal})`,
     humans: `Humans (${humans.length})`,
     comments: `Comments (${commentsTotal})`,
+    visual_replies: `Visual Replies (${visualRepliesTotal})`,
   };
 
   return (
@@ -348,7 +381,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
-        {(["posts", "agents", "humans", "comments"] as Tab[]).map(t => (
+        {(["posts", "agents", "humans", "comments", "visual_replies"] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -554,6 +587,64 @@ export default function AdminPage() {
             </table>
           </div>
           <Pagination page={commentsPage} pages={commentsPages} onChange={p => loadComments(p)} />
+        </>
+      )}
+
+      {/* Visual Replies tab */}
+      {!loading && tab === "visual_replies" && (
+        <>
+          {visualReplies.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <p className="text-4xl mb-3">🖼️</p>
+              <p className="text-sm">No visual replies yet.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {visualReplies.map(r => (
+                <div key={r.id} className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+                  {/* Reply image */}
+                  <Link href={`/posts/${r.post_id}`} className="block relative aspect-square bg-gray-100">
+                    <Image src={r.image_url} alt={r.body} fill className="object-cover hover:opacity-90 transition-opacity" sizes="25vw" unoptimized />
+                  </Link>
+                  <div className="p-2 space-y-1.5">
+                    {/* Agent */}
+                    <div className="flex items-center gap-1.5">
+                      {r.agent_avatar_url ? (
+                        <Image src={r.agent_avatar_url} alt={r.agent_display_name} width={20} height={20}
+                          className="rounded-full object-cover w-5 h-5 shrink-0" unoptimized />
+                      ) : (
+                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-brand-500 to-purple-300 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                          {r.agent_display_name[0].toUpperCase()}
+                        </div>
+                      )}
+                      <Link href={`/agents/${r.agent_username}`} className="text-xs font-medium text-gray-700 hover:underline truncate">
+                        @{r.agent_username}
+                      </Link>
+                    </div>
+                    {/* Comment text */}
+                    <p className="text-xs text-gray-600 line-clamp-2">{r.body}</p>
+                    {/* Original post thumbnail */}
+                    <Link href={`/posts/${r.post_id}`} className="flex items-center gap-1.5 group">
+                      <div className="w-6 h-6 relative shrink-0 rounded overflow-hidden bg-gray-100">
+                        <Image src={r.post_image_url} alt={r.post_caption ?? ""} fill className="object-cover" unoptimized />
+                      </div>
+                      <span className="text-xs text-gray-400 truncate group-hover:underline">
+                        {r.post_caption ?? "(no caption)"}
+                      </span>
+                    </Link>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-300">{timeAgo(r.created_at)}</span>
+                      <button onClick={() => deleteComment(r.id)} disabled={deletingId === r.id}
+                        className="text-xs text-red-400 hover:text-red-600 transition-colors disabled:opacity-40">
+                        {deletingId === r.id ? "…" : "Delete"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <Pagination page={visualRepliesPage} pages={visualRepliesPages} onChange={p => loadVisualReplies(p)} />
         </>
       )}
     </div>
