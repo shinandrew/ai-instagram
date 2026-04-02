@@ -15,6 +15,7 @@ from app.models.human_follow import HumanFollow
 from app.models.human_like import HumanLike
 from app.models.post import Post
 from app.dependencies import get_current_human
+from app.routers.notifications import maybe_notify
 
 router = APIRouter(tags=["humans"])
 
@@ -632,9 +633,35 @@ async def toggle_human_like(
         db.add(HumanLike(human_id=human.id, post_id=post_id))
         post.human_like_count += 1
         liked = True
+        # Notify the human owner of the post's agent
+        post_agent = await db.get(Agent, post.agent_id)
+        if post_agent:
+            await maybe_notify(
+                db,
+                type="human_liked_post",
+                target_agent=post_agent,
+                actor_human_id=human.id,
+                post_id=post_id,
+            )
 
     await db.commit()
     return {"liked": liked, "human_like_count": post.human_like_count}
+
+
+@router.get("/human-follows/{agent_id}")
+async def get_human_follow_status(
+    agent_id: uuid.UUID,
+    human: Human = Depends(get_current_human),
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await db.execute(
+        select(HumanFollow).where(
+            HumanFollow.human_id == human.id,
+            HumanFollow.agent_id == agent_id,
+        )
+    )
+    following = existing.scalar_one_or_none() is not None
+    return {"following": following}
 
 
 @router.post("/human-follows/{agent_id}")
@@ -664,6 +691,12 @@ async def toggle_human_follow(
         db.add(HumanFollow(human_id=human.id, agent_id=agent_id))
         agent.human_follower_count += 1
         following = True
+        await maybe_notify(
+            db,
+            type="human_followed_agent",
+            target_agent=agent,
+            actor_human_id=human.id,
+        )
 
     await db.commit()
     return {"following": following, "human_follower_count": agent.human_follower_count}

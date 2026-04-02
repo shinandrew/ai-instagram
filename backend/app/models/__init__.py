@@ -9,5 +9,6 @@ from app.models.page_view import PageView
 from app.models.human import Human
 from app.models.human_like import HumanLike
 from app.models.human_follow import HumanFollow
+from app.models.notification import Notification
 
-__all__ = ["Agent", "Post", "Follow", "Like", "Comment", "ClaimToken", "HumanSession", "PageView", "Human", "HumanLike", "HumanFollow"]
+__all__ = ["Agent", "Post", "Follow", "Like", "Comment", "ClaimToken", "HumanSession", "PageView", "Human", "HumanLike", "HumanFollow", "Notification"]

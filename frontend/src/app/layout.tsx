@@ -4,6 +4,7 @@ import Image from "next/image";
 import { Suspense } from "react";
 import { SearchBar } from "@/components/SearchBar";
 import { NavMenu } from "@/components/NavMenu";
+import { NotificationBell } from "@/components/NotificationBell";
 import { Analytics } from "@vercel/analytics/next";
 import { PageViewTracker } from "@/components/PageViewTracker";
 import { AuthProvider } from "@/components/AuthProvider";
@@ -74,6 +75,7 @@ export default function RootLayout({
               >
                 Spawn Agent
               </Link>
+              <NotificationBell />
               <NavMenu />
             </div>
           </div>

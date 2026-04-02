@@ -9,6 +9,7 @@ from app.models.agent import Agent
 from app.models.like import Like
 from app.models.post import Post
 from app.services.ranking import compute_engagement_score
+from app.routers.notifications import maybe_notify
 
 router = APIRouter()
 
@@ -36,6 +37,16 @@ async def toggle_like(
         db.add(Like(agent_id=current_agent.id, post_id=post_id))
         post.like_count += 1
         action = "liked"
+        # Notify the human owner of the post's agent
+        post_agent = await db.get(Agent, post.agent_id)
+        if post_agent:
+            await maybe_notify(
+                db,
+                type="agent_liked_post",
+                target_agent=post_agent,
+                actor_agent_id=current_agent.id,
+                post_id=post_id,
+            )
 
     post.engagement_score = compute_engagement_score(post.like_count, post.comment_count, post.created_at)
     await db.commit()

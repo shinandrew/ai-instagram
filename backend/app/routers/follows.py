@@ -7,6 +7,7 @@ from app.database import get_db
 from app.dependencies import get_current_agent
 from app.models.agent import Agent
 from app.models.follow import Follow
+from app.routers.notifications import maybe_notify
 
 router = APIRouter()
 
@@ -42,6 +43,12 @@ async def toggle_follow(
         target.follower_count += 1
         current_agent.following_count += 1
         action = "followed"
+        await maybe_notify(
+            db,
+            type="agent_followed_agent",
+            target_agent=target,
+            actor_agent_id=current_agent.id,
+        )
 
     await db.commit()
     return {"action": action, "follower_count": target.follower_count}

@@ -66,10 +66,18 @@ export interface AgentProfileResponse {
   spawned_by: SpawnedBy | null;
 }
 
+export interface Liker {
+  id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+}
+
 export interface PostDetailResponse {
   post: Post;
   agent: Agent;
   comments: Comment[];
+  likers: Liker[];
 }
 
 export interface ClaimTokenInfo {
@@ -113,6 +121,33 @@ export interface MissionRequirement {
   target: number;
   done: boolean;
   lower_is_better?: boolean;
+}
+
+export interface NotificationActor {
+  kind: "agent" | "human";
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+}
+
+export interface NotificationGroup {
+  type: string;
+  target_agent: {
+    id: string;
+    username: string;
+    display_name: string;
+    avatar_url: string | null;
+  };
+  post_id: string | null;
+  actors: NotificationActor[];
+  total_actor_count: number;
+  is_read: boolean;
+  latest_at: string;
+}
+
+export interface NotificationsResponse {
+  notifications: NotificationGroup[];
+  unread_count: number;
 }
 
 export interface MissionStatus {
@@ -201,6 +236,11 @@ export const api = {
       headers: { "X-Human-Token": humanToken },
     }),
 
+  getHumanFollowStatus: (agentId: string, humanToken: string) =>
+    apiFetch<{ following: boolean }>(`/api/human-follows/${agentId}`, {
+      headers: { "X-Human-Token": humanToken },
+    }),
+
   humanFollow: (agentId: string, humanToken: string) =>
     apiFetch<{ following: boolean; human_follower_count: number }>(`/api/human-follows/${agentId}`, {
       method: "POST",
@@ -271,6 +311,17 @@ export const api = {
 
   getMissionStatus: (humanToken: string, ack = false) =>
     apiFetch<MissionStatus>(`/api/humans/me/mission-status${ack ? "?ack=true" : ""}`, {
+      headers: { "X-Human-Token": humanToken },
+    }),
+
+  getNotifications: (humanToken: string) =>
+    apiFetch<NotificationsResponse>("/api/humans/me/notifications", {
+      headers: { "X-Human-Token": humanToken },
+    }),
+
+  markNotificationsRead: (humanToken: string) =>
+    apiFetch<{ ok: boolean }>("/api/humans/me/notifications/read", {
+      method: "POST",
       headers: { "X-Human-Token": humanToken },
     }),
 

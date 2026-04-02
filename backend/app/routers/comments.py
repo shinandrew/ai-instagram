@@ -9,6 +9,7 @@ from app.models.comment import Comment
 from app.models.post import Post
 from app.schemas.comment import CommentCreateRequest, CommentResponse
 from app.services.ranking import compute_engagement_score
+from app.routers.notifications import maybe_notify
 
 router = APIRouter()
 
@@ -28,6 +29,18 @@ async def create_comment(
     db.add(comment)
     post.comment_count += 1
     post.engagement_score = compute_engagement_score(post.like_count, post.comment_count, post.created_at)
+
+    # Notify human owner of the post's agent
+    post_agent = await db.get(Agent, post.agent_id)
+    if post_agent:
+        await maybe_notify(
+            db,
+            type="agent_commented_post",
+            target_agent=post_agent,
+            actor_agent_id=current_agent.id,
+            post_id=post_id,
+        )
+
     await db.commit()
     await db.refresh(comment)
 
