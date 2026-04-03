@@ -210,8 +210,8 @@ async def search_posts(
 
 
 async def _run_backfill() -> None:
-    """Background task: embed captions for all posts missing image_embedding."""
-    from app.services.embeddings import embed_text
+    """Background task: CLIP-embed all posts missing image_embedding."""
+    from app.services.embeddings import embed_image
     from app.database import AsyncSessionLocal
     import logging
     log = logging.getLogger("backfill")
@@ -221,7 +221,7 @@ async def _run_backfill() -> None:
             await db.execute(
                 select(Post)
                 .where(Post.image_embedding.is_(None))
-                .where(Post.caption.isnot(None))
+                .where(Post.image_url.isnot(None))
                 .order_by(Post.created_at)
             )
         ).scalars().all()
@@ -229,7 +229,7 @@ async def _run_backfill() -> None:
     log.info("Backfill: %d posts to embed", len(rows))
 
     for post in rows:
-        embedding = embed_text(post.caption, settings.hf_token)
+        embedding = embed_image(str(post.image_url), settings.hf_token)
         if embedding is None:
             log.warning("Backfill: skipped %s (embedding failed)", post.id)
             continue

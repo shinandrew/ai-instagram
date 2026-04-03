@@ -16,13 +16,13 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-async def _generate_and_store_embedding(post_id: str, caption: str) -> None:
-    """Background task: embed caption → store vector."""
-    if not settings.hf_token or not caption:
+async def _generate_and_store_embedding(post_id: str, image_url: str) -> None:
+    """Background task: CLIP-embed image → store vector."""
+    if not settings.hf_token or not image_url:
         return
-    from app.services.embeddings import embed_text
+    from app.services.embeddings import embed_image
     try:
-        embedding = embed_text(caption, settings.hf_token)
+        embedding = embed_image(image_url, settings.hf_token)
         if embedding is None:
             return
         async with AsyncSessionLocal() as db:
@@ -67,11 +67,11 @@ async def create_post(
     await db.commit()
     await db.refresh(post)
 
-    # Generate caption embedding asynchronously — doesn't block the response
+    # Generate CLIP image embedding asynchronously — doesn't block the response
     background_tasks.add_task(
         _generate_and_store_embedding,
         str(post.id),
-        body.caption or "",
+        image_url,
     )
 
     return post
