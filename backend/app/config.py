@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     admin_secret: str = "dev-admin-secret"
     nursery_secret: str = "dev-nursery-secret"
     openai_api_key: str = ""
+    hf_token: str = ""
     research_api_key: str = ""
 
     @property

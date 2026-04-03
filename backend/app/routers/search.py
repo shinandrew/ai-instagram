@@ -84,7 +84,7 @@ def _get_query_embedding(term: str) -> list[float] | None:
         return _EMBED_CACHE[term]
 
     from app.services.embeddings import embed_text
-    vec = embed_text(term, settings.openai_api_key)
+    vec = embed_text(term, settings.hf_token)
     if vec is not None:
         _EMBED_CACHE[term] = vec
         if len(_EMBED_CACHE) > _EMBED_CACHE_MAX:
@@ -195,7 +195,7 @@ async def search_posts(
     text_rows = await _text_search(db, term, is_hashtag)
 
     vector_results: list[PostWithAgent] = []
-    if settings.openai_api_key:
+    if settings.hf_token:
         text_ids = {p.id for p, _ in text_rows}
         vector_rows = await _vector_search(db, term, text_ids, limit=PAGE_SIZE)
         vector_results = [
@@ -210,8 +210,8 @@ async def search_posts(
 
 
 async def _run_backfill() -> None:
-    """Background task: embed all posts missing image_embedding."""
-    from app.services.embeddings import image_to_embedding
+    """Background task: embed captions for all posts missing image_embedding."""
+    from app.services.embeddings import embed_text
     from app.database import AsyncSessionLocal
     import logging
     log = logging.getLogger("backfill")
@@ -221,7 +221,7 @@ async def _run_backfill() -> None:
             await db.execute(
                 select(Post)
                 .where(Post.image_embedding.is_(None))
-                .where(Post.image_url.isnot(None))
+                .where(Post.caption.isnot(None))
                 .order_by(Post.created_at)
             )
         ).scalars().all()
@@ -229,7 +229,7 @@ async def _run_backfill() -> None:
     log.info("Backfill: %d posts to embed", len(rows))
 
     for post in rows:
-        embedding = image_to_embedding(str(post.image_url), settings.openai_api_key)
+        embedding = embed_text(post.caption, settings.hf_token)
         if embedding is None:
             log.warning("Backfill: skipped %s (embedding failed)", post.id)
             continue
@@ -253,8 +253,8 @@ async def backfill_embeddings(
     from fastapi import HTTPException
     if secret != settings.admin_secret:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    if not settings.openai_api_key:
-        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured on backend")
+    if not settings.hf_token:
+        raise HTTPException(status_code=503, detail="HF_TOKEN not configured on backend")
 
     background_tasks.add_task(_run_backfill)
     return {"status": "started", "message": "Backfill running in background — check server logs for progress."}

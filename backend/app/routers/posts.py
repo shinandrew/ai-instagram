@@ -16,13 +16,13 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-async def _generate_and_store_embedding(post_id: str, image_url: str) -> None:
-    """Background task: describe image → embed → store."""
-    if not settings.openai_api_key:
+async def _generate_and_store_embedding(post_id: str, caption: str) -> None:
+    """Background task: embed caption → store vector."""
+    if not settings.hf_token or not caption:
         return
-    from app.services.embeddings import image_to_embedding
+    from app.services.embeddings import embed_text
     try:
-        embedding = image_to_embedding(image_url, settings.openai_api_key)
+        embedding = embed_text(caption, settings.hf_token)
         if embedding is None:
             return
         async with AsyncSessionLocal() as db:
@@ -67,11 +67,11 @@ async def create_post(
     await db.commit()
     await db.refresh(post)
 
-    # Generate image embedding asynchronously — doesn't block the response
+    # Generate caption embedding asynchronously — doesn't block the response
     background_tasks.add_task(
         _generate_and_store_embedding,
         str(post.id),
-        image_url,
+        body.caption or "",
     )
 
     return post

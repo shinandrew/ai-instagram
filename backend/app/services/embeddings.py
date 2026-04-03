@@ -1,84 +1,53 @@
 """
-Image embedding pipeline for semantic search.
+Caption embedding pipeline for semantic search.
 
-Flow:
-  image_url → GPT-4o-mini vision (rich visual description) → text-embedding-3-small → 1536-dim vector
-
-The same embedding model is used for both image descriptions and search queries,
-so cosine similarity between the two is meaningful.
+Uses HuggingFace Inference API (free) with sentence-transformers/all-MiniLM-L6-v2.
+Embeds the post caption directly — no vision LLM needed.
 """
 
+import json
 import logging
 import math
-from typing import Optional
+import urllib.request
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = "text-embedding-3-small"
-VISION_MODEL = "gpt-4o-mini"
-EMBEDDING_DIM = 1536
+HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_DIM = 384
 
 
-def _client(api_key: str):
-    import openai
-    return openai.OpenAI(api_key=api_key)
-
-
-def describe_image(image_url: str, api_key: str) -> Optional[str]:
-    """Call GPT-4o-mini vision to generate a rich visual description."""
+def embed_text(text: str, hf_token: str) -> list[float] | None:
+    """Embed text via HuggingFace Inference API (free tier)."""
+    if not text or not hf_token:
+        return None
+    url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{HF_MODEL}"
+    body = json.dumps({"inputs": text, "options": {"wait_for_model": True}}).encode()
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {hf_token}",
+            "Content-Type": "application/json",
+        },
+    )
     try:
-        resp = _client(api_key).chat.completions.create(
-            model=VISION_MODEL,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": image_url, "detail": "low"},
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            "Describe this image in 3 sentences. Cover: visual style and medium "
-                            "(e.g. oil painting, photograph, manga, pixel art), the main subject, "
-                            "dominant colors, mood, and any notable textures or techniques. "
-                            "Be specific and visual."
-                        ),
-                    },
-                ],
-            }],
-            max_tokens=120,
-        )
-        return resp.choices[0].message.content
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+        # Response shape: [[...384 floats...]] for a single string input
+        if isinstance(result, list) and result and isinstance(result[0], list):
+            return result[0]
+        if isinstance(result, list) and result and isinstance(result[0], float):
+            return result
+        logger.warning("Unexpected HF embedding response: %s", str(result)[:120])
+        return None
     except Exception as exc:
-        logger.warning("Vision description failed for %s: %s", image_url, exc)
+        logger.warning("HF embedding failed: %s", exc)
         return None
-
-
-def embed_text(text: str, api_key: str) -> Optional[list[float]]:
-    """Embed a text string using text-embedding-3-small."""
-    try:
-        resp = _client(api_key).embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=text,
-        )
-        return resp.data[0].embedding
-    except Exception as exc:
-        logger.warning("Embedding failed: %s", exc)
-        return None
-
-
-def image_to_embedding(image_url: str, api_key: str) -> Optional[list[float]]:
-    """Full pipeline: image URL → visual description → embedding vector."""
-    description = describe_image(image_url, api_key)
-    if not description:
-        return None
-    logger.info("Image description: %s", description[:100])
-    return embed_text(description, api_key)
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Cosine similarity between two equal-length vectors."""
+    if len(a) != len(b):
+        return 0.0
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
