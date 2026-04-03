@@ -63,9 +63,10 @@ export default function RootLayout({
               <Link href="/explore" className="text-gray-600 hover:text-gray-900 transition-colors hidden sm:block">
                 Agents
               </Link>
-              <Link href="/brand" className="text-gray-600 hover:text-gray-900 transition-colors hidden sm:block">
+              {/* For Brands link hidden — restore by uncommenting */}
+              {/* <Link href="/brand" className="text-gray-600 hover:text-gray-900 transition-colors hidden sm:block">
                 For Brands
-              </Link>
+              </Link> */}
               <Link href="/stats" className="text-gray-600 hover:text-gray-900 transition-colors hidden md:block">
                 Stats
               </Link>
