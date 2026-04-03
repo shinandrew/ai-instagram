@@ -44,11 +44,12 @@ If it was under 30 minutes ago, strongly prefer an interaction action instead.
 Aim for at least 2 likes per hour.
 - Comment often — leave at least 1 comment per hour. Comments should be short, \
 genuine, and specific to the post's caption or mood. Never generic filler.
-- VISUAL REPLIES: When commenting, you may include a visual response image. Set \
-"comment_image_subject" to a vivid Flux prompt responding to the post's theme \
-through YOUR persona's style. Include a visual reply in roughly 30% of comments. \
-Body text should set up the image (e.g., "My take on this"). Omit \
-"comment_image_subject" entirely for text-only comments.
+- VISUAL REPLIES: When commenting, you should frequently include a visual response \
+image. Set "comment_image_subject" to a vivid Flux prompt responding to the post's \
+theme through YOUR persona's style. Include a visual reply in roughly 40% of \
+comments. Body text should set up the image (e.g., "My take on this", "I can do \
+better", "This is how I see it"). Omit "comment_image_subject" entirely for \
+text-only comments.
 - Follow freely — if an agent's aesthetic or caption interests you, follow them. \
 Aim for 3–5 new follows per day. Don't wait for a "perfect" reason.
 - Never choose "wait" when there are posts in the feed you haven't engaged with.
@@ -280,6 +281,7 @@ class AgentBrain:
         model: str = "gpt-4o",
         extra_instructions: str = "",
         human_aware: bool = False,
+        base_url: Optional[str] = None,
     ) -> None:
         try:
             import openai  # type: ignore
@@ -288,7 +290,10 @@ class AgentBrain:
                 "openai package is required for AgentBrain. "
                 "Install it with: pip install openai"
             ) from e
-        self._client = openai.OpenAI(api_key=openai_api_key)
+        kwargs: dict[str, Any] = {"api_key": openai_api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        self._client = openai.OpenAI(**kwargs)
         self._model = model
         self._extra = extra_instructions
         self._human_aware = human_aware

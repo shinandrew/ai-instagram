@@ -67,11 +67,20 @@ def run_agent(
     image_mode: str = "huggingface",
     hf_token: str = "",
     human_pleaser_ratio: float = 0.4,
+    brain_api_key: str = "",
+    brain_base_url: str = "",
 ) -> None:
     """Blocking agent loop — runs in its own daemon thread."""
+    import random
     from aigram import AgentBrain, AgentClient, HuggingFaceGenerator, PostStyle
 
     username = agent["username"]
+
+    # Stagger startup to avoid bursting the LLM rate limit when all agents
+    # wake up simultaneously after a redeploy. Spread over 10 minutes.
+    startup_delay = random.uniform(0, 600)
+    logger.info("@%s startup delay: %.0fs", username, startup_delay)
+    time.sleep(startup_delay)
     logger.info(
         "Starting agent @%s (%s) [brain=%s, images=%s]",
         username, agent["display_name"], brain_model, image_mode,
@@ -120,10 +129,11 @@ def run_agent(
     )
 
     brain = AgentBrain(
-        openai_api_key     = openai_key,
+        openai_api_key     = brain_api_key or openai_key,
         model              = brain_model,
         extra_instructions = agent.get("nursery_persona") or "",
         human_aware        = human_aware,
+        base_url           = brain_base_url or None,
     )
 
     def on_decision(decision) -> None:
@@ -161,16 +171,36 @@ def main() -> None:
     api_url         = os.environ.get("AIGRAM_API_URL", "https://backend-production-b625.up.railway.app")
     poll_interval   = int(os.environ.get("POLL_INTERVAL", "300"))
     fast_interval   = int(os.environ.get("FAST_POLL_INTERVAL", "30"))
-    brain_model          = os.environ.get("BRAIN_MODEL", "gpt-4o-mini")
     image_mode           = os.environ.get("IMAGE_MODE", "huggingface")
     hf_token             = os.environ.get("HF_TOKEN", "")
     human_pleaser_ratio  = float(os.environ.get("HUMAN_PLEASER_RATIO", "0.4"))
 
+    # Brain provider priority: Cerebras → Groq → OpenAI
+    # Override model at any time with BRAIN_MODEL env var.
+    cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
+    groq_key     = os.environ.get("GROQ_API_KEY") or os.environ.get("GROK_API_KEY", "")
+    if cerebras_key:
+        brain_api_key  = cerebras_key
+        brain_base_url = "https://api.cerebras.ai/v1"
+        brain_model    = os.environ.get("BRAIN_MODEL", "llama3.1-8b")
+        brain_provider = "cerebras"
+    elif groq_key:
+        brain_api_key  = groq_key
+        brain_base_url = "https://api.groq.com/openai/v1"
+        brain_model    = os.environ.get("BRAIN_MODEL", "llama-3.3-70b-versatile")
+        brain_provider = "groq"
+    else:
+        brain_api_key  = openai_key
+        brain_base_url = ""
+        brain_model    = os.environ.get("BRAIN_MODEL", "gpt-4o-mini")
+        brain_provider = "openai"
+
     if not hf_token:
         logger.warning("HF_TOKEN not set — image generation will fall back to OpenAI DALL-E (costs money). Set HF_TOKEN for free image generation.")
     logger.info(
-        "Nursery starting — full poll every %ds, fast pick-up every %ds | brain=%s | images=%s | human_pleaser=%.0f%%",
-        poll_interval, fast_interval, brain_model, image_mode if hf_token else "openai-fallback",
+        "Nursery starting — full poll every %ds, fast pick-up every %ds | brain=%s (%s) | images=%s | human_pleaser=%.0f%%",
+        poll_interval, fast_interval, brain_model, brain_provider,
+        image_mode if hf_token else "openai-fallback",
         human_pleaser_ratio * 100,
     )
 
@@ -188,7 +218,7 @@ def main() -> None:
                 logger.warning("Agent @%s thread died — restarting", agent["username"])
             t = threading.Thread(
                 target=run_agent,
-                args=(agent, openai_key, api_url, brain_model, image_mode, hf_token, human_pleaser_ratio),
+                args=(agent, openai_key, api_url, brain_model, image_mode, hf_token, human_pleaser_ratio, brain_api_key, brain_base_url),
                 daemon=True,
                 name=f"agent-{agent['username']}",
             )
