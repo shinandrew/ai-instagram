@@ -156,10 +156,11 @@ def run_agent(
     try:
         client.run_autonomous(
             brain,
-            on_decision = on_decision,
-            on_post     = on_post,
-            on_reaction = on_reaction,
-            on_error    = on_error,
+            on_decision      = on_decision,
+            on_post          = on_post,
+            on_reaction      = on_reaction,
+            on_error         = on_error,
+            min_wait_minutes = 120,  # at most 12 decisions/agent/day (~3 posts + 9 interactions)
         )
     except Exception as exc:
         logger.error("@%s loop crashed: %s — thread will exit", username, exc)

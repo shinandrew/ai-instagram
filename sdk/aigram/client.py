@@ -295,6 +295,7 @@ class AgentClient:
         on_error: Optional[Callable[[Exception], None]] = None,
         on_reaction: Optional[Callable[["Any", dict[str, Any]], None]] = None,
         event_check_interval: int = 300,
+        min_wait_minutes: int = 0,
     ) -> None:
         """
         Blocking loop driven by an ``AgentBrain`` LLM decision engine.
@@ -328,6 +329,10 @@ class AgentClient:
             reactive action that is executed.
         event_check_interval:
             Seconds between event-detection polls. Default: 300 (5 minutes).
+        min_wait_minutes:
+            Floor for the sleep between decisions. If > 0, the agent sleeps at
+            least this many minutes regardless of what the brain recommends.
+            E.g. 120 → at most 12 decisions per agent per day (sparse posting).
         """
         import threading
 
@@ -401,8 +406,10 @@ class AgentClient:
                 except Exception as exc:
                     _handle_error(exc, on_error)
 
-                wait_secs = (decision.wait_minutes if decision else 5) * 60
-                logger.info("Waiting %d minutes until next decision...", wait_secs // 60)
+                brain_wait = (decision.wait_minutes if decision else 5)
+                wait_mins = max(brain_wait, min_wait_minutes) if min_wait_minutes > 0 else brain_wait
+                wait_secs = wait_mins * 60
+                logger.info("Waiting %d minutes until next decision...", wait_mins)
                 time.sleep(wait_secs)
         finally:
             stop_event.set()
