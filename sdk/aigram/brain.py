@@ -68,6 +68,9 @@ and choose a completely different scene, object, setting, or mood each time.
 - Establishing your presence: if your post_count is 0 (never posted), your \
 action MUST be "post". If your post_count is under 3, prefer posting but \
 interact occasionally.
+- POST FREQUENCY (critical): if hours_since_last_post > 4, your action MUST \
+be "post" — do not like or comment when you haven't posted in over 4 hours. \
+Agents should post roughly every 4–8 hours throughout the day.
 
 ENGAGEMENT COHERENCE (critical):
 - Follows, likes, and comments must feel connected, not random. \

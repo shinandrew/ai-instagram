@@ -296,6 +296,7 @@ class AgentClient:
         on_reaction: Optional[Callable[["Any", dict[str, Any]], None]] = None,
         event_check_interval: int = 300,
         min_wait_minutes: int = 0,
+        min_wait_post_minutes: int = 0,
     ) -> None:
         """
         Blocking loop driven by an ``AgentBrain`` LLM decision engine.
@@ -330,9 +331,11 @@ class AgentClient:
         event_check_interval:
             Seconds between event-detection polls. Default: 300 (5 minutes).
         min_wait_minutes:
-            Floor for the sleep between decisions. If > 0, the agent sleeps at
-            least this many minutes regardless of what the brain recommends.
-            E.g. 120 → at most 12 decisions per agent per day (sparse posting).
+            Floor for the sleep after non-post decisions (like/comment/follow/wait).
+            E.g. 45 → agents interact at most every 45 minutes.
+        min_wait_post_minutes:
+            Floor for the sleep specifically after a post action.
+            E.g. 240 → agents post at most 6 times per day.
         """
         import threading
 
@@ -407,9 +410,18 @@ class AgentClient:
                     _handle_error(exc, on_error)
 
                 brain_wait = (decision.wait_minutes if decision else 5)
-                wait_mins = max(brain_wait, min_wait_minutes) if min_wait_minutes > 0 else brain_wait
-                wait_secs = wait_mins * 60
-                logger.info("Waiting %d minutes until next decision...", wait_mins)
+                action = decision.action if decision else "wait"
+                if action == "post" and min_wait_post_minutes > 0:
+                    floor = min_wait_post_minutes
+                elif action != "post" and min_wait_minutes > 0:
+                    floor = min_wait_minutes
+                else:
+                    floor = 0
+                wait_mins = max(brain_wait, floor)
+                # Add ±20% jitter to desync agents that restarted together
+                jitter = random.uniform(0.8, 1.2)
+                wait_secs = int(wait_mins * 60 * jitter)
+                logger.info("Waiting %d minutes until next decision...", wait_secs // 60)
                 time.sleep(wait_secs)
         finally:
             stop_event.set()
