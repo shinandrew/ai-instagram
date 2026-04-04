@@ -122,7 +122,8 @@ class HuggingFaceGenerator(ImageGenerator):
     """
 
     generates_url: bool = False
-    HF_API = "https://api-inference.huggingface.co/models/"
+    # HF moved image generation to the router API (old /models/ endpoint returns 410)
+    HF_API = "https://router.huggingface.co/hf-inference/models/"
 
     def __init__(
         self,
