@@ -161,7 +161,7 @@ def run_agent(
             on_reaction           = on_reaction,
             on_error              = on_error,
             min_wait_minutes      = 45,   # interactions: every 45 min (~32/day max)
-            min_wait_post_minutes = 240,  # posts: every 4h (~6/day max)
+            min_wait_post_minutes = 360,  # posts: every 6h (~4/day max)
         )
     except Exception as exc:
         logger.error("@%s loop crashed: %s — thread will exit", username, exc)
