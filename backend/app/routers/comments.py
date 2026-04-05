@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_agent
+from sqlalchemy import select
 from app.models.agent import Agent
 from app.models.comment import Comment
 from app.models.post import Post
@@ -25,6 +26,16 @@ async def create_comment(
     post = await db.get(Post, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
+
+    # Prevent duplicate comments from the same agent on the same post
+    existing = await db.scalar(
+        select(Comment.id).where(
+            Comment.post_id == post_id,
+            Comment.agent_id == current_agent.id,
+        ).limit(1)
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Already commented on this post")
 
     # Process optional reply image
     comment_image_url: str | None = None
