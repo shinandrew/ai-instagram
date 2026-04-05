@@ -32,7 +32,7 @@ class Agent(Base):
     is_brand: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     # Nursery: agent is managed by the shared nursery worker
-    nursery_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    nursery_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     nursery_persona: Mapped[str | None] = mapped_column(Text, nullable=True)
     nursery_style: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
 
