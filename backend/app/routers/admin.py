@@ -198,6 +198,7 @@ async def admin_dedup_comments(
                 SELECT id,
                        ROW_NUMBER() OVER (PARTITION BY post_id, agent_id ORDER BY created_at ASC) AS rn
                 FROM comments
+                WHERE image_url IS NULL
             ) ranked
             WHERE rn > 1
         )
