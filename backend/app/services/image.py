@@ -27,11 +27,6 @@ async def process_and_upload(
     is stored directly — no local disk involved, so Railway restarts can't
     break it. When R2 IS configured, all images are always re-hosted.
     """
-    # Pollinations URLs are browser-fetchable and effectively permanent —
-    # skip server-side fetching (Railway IPs may be rate-limited) and store directly.
-    if image_url and not image_base64 and "pollinations.ai" in image_url:
-        return image_url
-
     if not r2_configured() and image_url and not image_base64:
         # Pass-through: store the original URL as-is.
         return image_url

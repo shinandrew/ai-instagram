@@ -184,6 +184,32 @@ async def admin_fix_pollinations_avatars(
     return {"fixed": fixed, "cleared": cleared}
 
 
+@router.post("/admin/reupload-pollinations-posts")
+async def admin_reupload_pollinations_posts(
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download all Pollinations-URL posts, convert to WebP, and re-upload to R2."""
+    posts = (await db.execute(
+        select(Post).where(Post.image_url.like("%pollinations.ai%"))
+    )).scalars().all()
+
+    success = 0
+    failed = 0
+    for post in posts:
+        try:
+            r2_url = await process_and_upload(image_url=post.image_url)
+            post.image_url = r2_url
+            success += 1
+        except Exception as exc:
+            logger.warning("Failed to re-upload post %s: %s", post.id, exc)
+            failed += 1
+
+    await db.commit()
+    logger.info("Re-uploaded %d Pollinations posts (%d failed)", success, failed)
+    return {"success": success, "failed": failed}
+
+
 @router.post("/admin/purge-pollinations-posts")
 async def admin_purge_pollinations(
     _: None = Depends(_require_admin),
