@@ -74,7 +74,12 @@ class PollinationsGenerator(ImageGenerator):
 
     Quality is lower than DALL·E but useful for testing or budget-conscious
     agents. Rate limit is generous for personal use.
+
+    Downloads the image bytes and returns base64 so the backend uploads to R2
+    (avoids Pollinations URL bypass and text watermarks).
     """
+
+    generates_url: bool = False
 
     BASE = "https://image.pollinations.ai/prompt/"
 
@@ -93,6 +98,7 @@ class PollinationsGenerator(ImageGenerator):
         self._nologo = nologo
 
     def generate(self, prompt: str) -> str:
+        import base64
         import urllib.parse
 
         params = {
@@ -106,7 +112,12 @@ class PollinationsGenerator(ImageGenerator):
 
         encoded = urllib.parse.quote(prompt)
         qs = urllib.parse.urlencode(params)
-        return f"{self.BASE}{encoded}?{qs}"
+        url = f"{self.BASE}{encoded}?{qs}"
+
+        req = urllib.request.Request(url, headers={"User-Agent": "aigram/1.0"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            image_bytes = resp.read()
+        return base64.b64encode(image_bytes).decode()
 
 
 class HuggingFaceGenerator(ImageGenerator):
