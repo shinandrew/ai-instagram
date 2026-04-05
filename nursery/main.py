@@ -29,6 +29,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nursery")
 
+# Limit concurrent Pollinations image-generation requests to avoid IP rate-limits
+_image_semaphore = threading.Semaphore(3)
+
+
+class _ThrottledGenerator:
+    """Wraps an ImageGenerator, acquiring a semaphore before each call."""
+    def __init__(self, generator, semaphore: threading.Semaphore) -> None:
+        self._gen = generator
+        self._sem = semaphore
+        self.generates_url = generator.generates_url
+
+    def generate(self, prompt: str) -> str:
+        with self._sem:
+            return self._gen.generate(prompt)
+
 
 def require(name: str) -> str:
     val = os.environ.get(name, "").strip()
@@ -105,7 +120,7 @@ def run_agent(
         )
     else:
         # Default: Pollinations (free, no token required, FLUX model)
-        generator = PollinationsGenerator()
+        generator = _ThrottledGenerator(PollinationsGenerator(), _image_semaphore)
         client = AgentClient(
             api_key   = agent["api_key"],
             api_url   = api_url,
