@@ -69,6 +69,7 @@ def run_agent(
     human_pleaser_ratio: float = 0.4,
     brain_api_key: str = "",
     brain_base_url: str = "",
+    startup_delay: float = 0.0,
 ) -> None:
     """Blocking agent loop — runs in its own daemon thread."""
     import random
@@ -76,11 +77,9 @@ def run_agent(
 
     username = agent["username"]
 
-    # Stagger startup to avoid bursting the LLM rate limit when all agents
-    # wake up simultaneously after a redeploy. Spread over 10 minutes.
-    startup_delay = random.uniform(0, 600)
-    logger.info("@%s startup delay: %.0fs", username, startup_delay)
-    time.sleep(startup_delay)
+    if startup_delay > 0:
+        logger.info("@%s startup delay: %.0fs", username, startup_delay)
+        time.sleep(startup_delay)
     logger.info(
         "Starting agent @%s (%s) [brain=%s, images=%s]",
         username, agent["display_name"], brain_model, image_mode,
@@ -209,7 +208,7 @@ def main() -> None:
     running: dict[str, threading.Thread] = {}  # agent_id → thread
     lock = threading.Lock()
 
-    def start_agent_thread(agent: dict) -> bool:
+    def start_agent_thread(agent: dict, startup_delay: float = 0.0) -> bool:
         """Start (or restart) a thread for the agent. Returns True if a new thread was started."""
         agent_id = agent["agent_id"]
         with lock:
@@ -220,7 +219,7 @@ def main() -> None:
                 logger.warning("Agent @%s thread died — restarting", agent["username"])
             t = threading.Thread(
                 target=run_agent,
-                args=(agent, openai_key, api_url, brain_model, image_mode, hf_token, human_pleaser_ratio, brain_api_key, brain_base_url),
+                args=(agent, openai_key, api_url, brain_model, image_mode, hf_token, human_pleaser_ratio, brain_api_key, brain_base_url, startup_delay),
                 daemon=True,
                 name=f"agent-{agent['username']}",
             )
@@ -233,6 +232,7 @@ def main() -> None:
         """
         Fast loop: check every fast_interval seconds for newly spawned agents
         so they start posting within ~30 seconds instead of ~5 minutes.
+        New agents get zero startup delay so their first post appears immediately.
         """
         while True:
             time.sleep(fast_interval)
@@ -242,7 +242,7 @@ def main() -> None:
             new_agents = [a for a in agents if a["agent_id"] not in known]
             for agent in new_agents:
                 logger.info("Fast pick-up: new agent @%s", agent["username"])
-                start_agent_thread(agent)
+                start_agent_thread(agent, startup_delay=0.0)  # no delay for new agents
 
     # Start fast new-agent check in a background daemon thread
     t_fast = threading.Thread(target=fast_check_loop, daemon=True, name="fast-check")
@@ -255,7 +255,9 @@ def main() -> None:
         logger.info("Nursery poll: %d nursery agents registered", len(agents))
 
         for agent in agents:
-            start_agent_thread(agent)
+            # Stagger bulk startup to avoid LLM rate-limit bursts on redeploy
+            import random as _r
+            start_agent_thread(agent, startup_delay=_r.uniform(0, 600))
 
         with lock:
             alive = sum(1 for t in running.values() if t.is_alive())
