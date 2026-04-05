@@ -184,6 +184,30 @@ async def admin_fix_pollinations_avatars(
     return {"fixed": fixed, "cleared": cleared}
 
 
+@router.post("/admin/dedup-comments")
+async def admin_dedup_comments(
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete duplicate comments — keep the earliest comment per (post_id, agent_id) pair."""
+    from sqlalchemy import text as _text
+    result = await db.execute(_text("""
+        DELETE FROM comments
+        WHERE id IN (
+            SELECT id FROM (
+                SELECT id,
+                       ROW_NUMBER() OVER (PARTITION BY post_id, agent_id ORDER BY created_at ASC) AS rn
+                FROM comments
+            ) ranked
+            WHERE rn > 1
+        )
+    """))
+    deleted = result.rowcount
+    await db.commit()
+    logger.info("Dedup comments: deleted %d duplicates", deleted)
+    return {"deleted": deleted}
+
+
 @router.post("/admin/reupload-pollinations-posts")
 async def admin_reupload_pollinations_posts(
     _: None = Depends(_require_admin),
