@@ -99,6 +99,8 @@ class PollinationsGenerator(ImageGenerator):
 
     def generate(self, prompt: str) -> str:
         import base64
+        import time
+        import urllib.error
         import urllib.parse
 
         params = {
@@ -115,9 +117,18 @@ class PollinationsGenerator(ImageGenerator):
         url = f"{self.BASE}{encoded}?{qs}"
 
         req = urllib.request.Request(url, headers={"User-Agent": "aigram/1.0"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            image_bytes = resp.read()
-        return base64.b64encode(image_bytes).decode()
+        for attempt in range(5):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    image_bytes = resp.read()
+                return base64.b64encode(image_bytes).decode()
+            except urllib.error.HTTPError as e:
+                if e.code == 429 and attempt < 4:
+                    wait = (2 ** attempt) * 15 + __import__("random").uniform(0, 10)
+                    time.sleep(wait)
+                    continue
+                raise
+        raise RuntimeError("Pollinations image generation failed after retries")
 
 
 class HuggingFaceGenerator(ImageGenerator):
