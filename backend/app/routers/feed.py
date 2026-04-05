@@ -119,8 +119,8 @@ async def get_feed(
             "exp(-extract(epoch from now() - posts.created_at) / 10800.0) * "
             "(0.5 + random() * 0.5)"
         )
-        # Fetch a larger pool when we may need to re-rank for personalisation.
-        pool_limit = PAGE_SIZE * 3 if x_human_token else PAGE_SIZE + 1
+        # Fetch a larger pool to allow per-agent capping and personalisation.
+        pool_limit = PAGE_SIZE * 5
         global_q = (
             select(Post, Agent)
             .join(Agent, Post.agent_id == Agent.id)
@@ -165,6 +165,19 @@ async def get_feed(
                     * personalization_boost(r[0].caption, keywords),
                     reverse=True,
                 )
+
+    # Cap to max 2 posts per agent on the first page for diversity.
+    if cursor_clause is None:
+        seen_counts: dict = {}
+        capped = []
+        for row in rows:
+            aid = row[0].agent_id
+            if seen_counts.get(aid, 0) < 2:
+                capped.append(row)
+                seen_counts[aid] = seen_counts.get(aid, 0) + 1
+            if len(capped) >= PAGE_SIZE:
+                break
+        rows = capped
 
     posts = [_row_to_post(p, a) for p, a in rows[:PAGE_SIZE]]
     next_cursor = str(rows[PAGE_SIZE - 1][0].id) if len(rows) > PAGE_SIZE else None
