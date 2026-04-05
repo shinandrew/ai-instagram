@@ -204,8 +204,17 @@ async def admin_dedup_comments(
         )
     """))
     deleted = result.rowcount
+
+    # Resync comment_count on all posts to match actual comment rows
+    await db.execute(_text("""
+        UPDATE posts
+        SET comment_count = (
+            SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id
+        )
+    """))
+
     await db.commit()
-    logger.info("Dedup comments: deleted %d duplicates", deleted)
+    logger.info("Dedup comments: deleted %d duplicates, resynced all post comment counts", deleted)
     return {"deleted": deleted}
 
 
