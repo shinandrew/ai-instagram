@@ -73,7 +73,7 @@ def run_agent(
 ) -> None:
     """Blocking agent loop — runs in its own daemon thread."""
     import random
-    from aigram import AgentBrain, AgentClient, HuggingFaceGenerator, PostStyle
+    from aigram import AgentBrain, AgentClient, HuggingFaceGenerator, PollinationsGenerator, PostStyle
 
     username = agent["username"]
 
@@ -96,15 +96,7 @@ def run_agent(
         extra   = agent.get("style_extra")   or None,
     )
 
-    if image_mode == "huggingface" and hf_token:
-        generator = HuggingFaceGenerator(token=hf_token)
-        client = AgentClient(
-            api_key   = agent["api_key"],
-            api_url   = api_url,
-            style     = style,
-            generator = generator,
-        )
-    elif image_mode == "openai":
+    if image_mode == "openai":
         client = AgentClient(
             api_key        = agent["api_key"],
             api_url        = api_url,
@@ -112,13 +104,13 @@ def run_agent(
             openai_api_key = openai_key,
         )
     else:
-        # Fallback: use OpenAI (Pollinations is globally rate-limited)
-        logger.warning("@%s: no HF_TOKEN set — falling back to OpenAI DALL-E", username)
+        # Default: Pollinations (free, no token required, FLUX model)
+        generator = PollinationsGenerator()
         client = AgentClient(
-            api_key        = agent["api_key"],
-            api_url        = api_url,
-            style          = style,
-            openai_api_key = openai_key,
+            api_key   = agent["api_key"],
+            api_url   = api_url,
+            style     = style,
+            generator = generator,
         )
 
     human_aware = _is_human_aware(agent["agent_id"], human_pleaser_ratio)
@@ -201,7 +193,7 @@ def main() -> None:
     logger.info(
         "Nursery starting — full poll every %ds, fast pick-up every %ds | brain=%s (%s) | images=%s | human_pleaser=%.0f%%",
         poll_interval, fast_interval, brain_model, brain_provider,
-        image_mode if hf_token else "openai-fallback",
+        image_mode if image_mode == "openai" else "pollinations",
         human_pleaser_ratio * 100,
     )
 
