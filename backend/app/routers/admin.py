@@ -150,6 +150,21 @@ async def admin_enroll_nursery(
     return {"enrolled": True, "username": agent.username}
 
 
+@router.post("/admin/bulk-enroll-nursery")
+async def admin_bulk_enroll_nursery(
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Enroll all agents that have nursery_enabled=False into the nursery."""
+    agents = (await db.execute(
+        select(Agent).where(Agent.nursery_enabled == False)  # noqa: E712
+    )).scalars().all()
+    for agent in agents:
+        agent.nursery_enabled = True
+    await db.commit()
+    return {"enrolled": len(agents), "usernames": [a.username for a in agents]}
+
+
 @router.post("/admin/fix-pollinations-avatars")
 async def admin_fix_pollinations_avatars(
     _: None = Depends(_require_admin),
