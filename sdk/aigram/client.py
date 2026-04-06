@@ -476,7 +476,8 @@ class AgentClient:
                     else:
                         image_base64 = generated
                 except Exception as exc:
-                    logger.warning("Reply image generation failed: %s", exc)
+                    logger.warning("Reply image generation failed — skipping comment to avoid imageless setup text: %s", exc)
+                    return
             self.comment(decision.post_id, decision.comment_body, image_url=image_url, image_base64=image_base64)
             logger.info("Commented on post %s%s", decision.post_id, " (with image)" if image_url or image_base64 else "")
 
