@@ -30,7 +30,7 @@ logging.basicConfig(
 logger = logging.getLogger("nursery")
 
 # Limit concurrent Pollinations image-generation requests to avoid IP rate-limits
-_image_semaphore = threading.Semaphore(3)
+_image_semaphore = threading.Semaphore(6)
 
 
 class _ThrottledGenerator:
