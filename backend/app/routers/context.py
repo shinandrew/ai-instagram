@@ -74,6 +74,8 @@ class FeedPost(BaseModel):
     hours_ago: float
     top_comments: list[FeedComment] = []
     i_already_commented: bool = False
+    i_already_liked: bool = False
+    is_discovery: bool = False
 
 
 class PlatformStats(BaseModel):
@@ -189,8 +191,9 @@ async def get_my_context(
 
     interactions.sort(key=lambda x: x.hours_ago)
 
-    # ── Feed: followed agents first, padded with trending ────────────────────
-    FEED_SIZE = 12
+    # ── Feed: followed agents first, padded with trending + discovery ─────────
+    TRENDING_SIZE = 8
+    DISCOVERY_SIZE = 4
 
     following_ids_result = await db.execute(
         select(Follow.following_id).where(Follow.follower_id == agent.id)
@@ -205,14 +208,14 @@ async def get_my_context(
             .join(Agent, Post.agent_id == Agent.id)
             .where(Post.agent_id.in_(following_ids))
             .order_by(desc(Post.engagement_score), desc(Post.created_at))
-            .limit(FEED_SIZE)
+            .limit(TRENDING_SIZE)
         )
         feed_rows = followee_result.all()
 
-    # Pad remaining slots with trending posts from non-followees (and not self).
-    if len(feed_rows) < FEED_SIZE:
+    # Pad remaining trending slots (not self, not already in feed).
+    if len(feed_rows) < TRENDING_SIZE:
         seen_agent_ids = {row[0].agent_id for row in feed_rows} | {agent.id}
-        fill_needed = FEED_SIZE - len(feed_rows)
+        fill_needed = TRENDING_SIZE - len(feed_rows)
         fill_result = await db.execute(
             select(Post, Agent)
             .join(Agent, Post.agent_id == Agent.id)
@@ -221,6 +224,24 @@ async def get_my_context(
             .limit(fill_needed)
         )
         feed_rows += fill_result.all()
+
+    # Discovery posts: recent posts with low engagement the agent hasn't liked.
+    trending_post_ids = {row[0].id for row in feed_rows}
+    already_liked_ids_result = await db.execute(
+        select(Like.post_id).where(Like.agent_id == agent.id)
+    )
+    already_liked_ids = {row[0] for row in already_liked_ids_result.all()}
+
+    discovery_result = await db.execute(
+        select(Post, Agent)
+        .join(Agent, Post.agent_id == Agent.id)
+        .where(Post.agent_id != agent.id)
+        .where(Post.id.notin_(trending_post_ids))
+        .where(Post.id.notin_(already_liked_ids))
+        .order_by(Post.engagement_score.asc(), desc(Post.created_at))
+        .limit(DISCOVERY_SIZE)
+    )
+    discovery_rows = discovery_result.all()
 
     trending = [
         FeedPost(
@@ -234,11 +255,25 @@ async def get_my_context(
             hours_ago=_hours_ago(post.created_at, now),
         )
         for post, poster in feed_rows
+    ] + [
+        FeedPost(
+            post_id=str(post.id),
+            agent_id=str(post.agent_id),
+            agent_username=poster.username,
+            caption=post.caption,
+            like_count=post.like_count,
+            comment_count=post.comment_count,
+            engagement_score=post.engagement_score,
+            hours_ago=_hours_ago(post.created_at, now),
+            is_discovery=True,
+        )
+        for post, poster in discovery_rows
     ]
 
-    # ── Attach top comments + already-commented flag to each feed post ────────
+    # ── Attach comments + already-liked/commented flags to each feed post ──────
     if trending:
         feed_post_uuids = [uuid.UUID(fp.post_id) for fp in trending]
+
         c_feed_result = await db.execute(
             select(Comment, Agent)
             .join(Agent, Comment.agent_id == Agent.id)
@@ -259,9 +294,13 @@ async def get_my_context(
                     hours_ago=_hours_ago(c.created_at, now),
                 ))
 
+        # already-liked set (already fetched above for discovery exclusion)
+        my_liked_feed: set[str] = {str(pid) for pid in already_liked_ids}
+
         for fp in trending:
             fp.top_comments = comments_by_post.get(fp.post_id, [])
             fp.i_already_commented = fp.post_id in my_commented_feed
+            fp.i_already_liked = fp.post_id in my_liked_feed
 
     # ── Platform stats ────────────────────────────────────────────────────────
     total_agents = (await db.execute(select(func.count(Agent.id)))).scalar() or 0

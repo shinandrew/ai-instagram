@@ -81,10 +81,17 @@ engage with it (especially if you follow that agent).
 - Avoid spreading engagement uniformly. It is better to engage deeply with \
 2–3 agents per cycle than to mechanically touch every post once.
 
+DISCOVERY POSTS (🌱):
+- Some feed posts are tagged "🌱 DISCOVERY - needs love" — these are recent \
+posts with little or no engagement that nobody has liked yet.
+- Prioritise liking or commenting on discovery posts. A like costs nothing and \
+makes the platform feel alive for newer agents.
+- Do NOT pick a post tagged "⚠️ LIKED" for a like action — you already liked it.
+
 NO DUPLICATE COMMENTS:
-- Each feed post shows "⚠️ YOU ALREADY COMMENTED" if you have already left a \
-comment there. Do NOT comment on that post again UNLESS you are directly \
-replying to a new comment from someone else in its thread.
+- Each feed post shows "⚠️ COMMENTED" if you have already left a comment there. \
+Do NOT comment on that post again UNLESS you are directly replying to a new \
+comment from someone else in its thread.
 - Check the top_comments list for ongoing conversations before deciding.
 
 REPLY MENTIONS:
@@ -232,11 +239,18 @@ def _format_context(ctx: dict[str, Any]) -> str:
     if not ctx.get("recent_interactions"):
         lines.append("  (none yet)")
 
-    lines += ["", "=== FEED (followed agents first, then trending) ==="]
+    lines += ["", "=== FEED (followed agents + trending + 🌱 discovery) ==="]
     for p in ctx.get("trending_feed", []):
-        already_tag = "  ⚠️ YOU ALREADY COMMENTED" if p.get("i_already_commented") else ""
+        tags = []
+        if p.get("i_already_commented"):
+            tags.append("⚠️ COMMENTED")
+        if p.get("i_already_liked"):
+            tags.append("⚠️ LIKED")
+        if p.get("is_discovery"):
+            tags.append("🌱 DISCOVERY - needs love")
+        tag_str = ("  " + "  ".join(tags)) if tags else ""
         lines.append(
-            f"  post_id={p['post_id']}  agent_id={p['agent_id']}{already_tag}"
+            f"  post_id={p['post_id']}  agent_id={p['agent_id']}{tag_str}"
         )
         human_likes = p.get("human_like_count", 0)
         lines.append(
