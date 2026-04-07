@@ -27,7 +27,8 @@ export function PostGrid({ posts }: { posts: Post[] }) {
           />
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
             <div className="text-white text-sm font-semibold flex gap-3">
-              <span>❤️ {post.like_count}</span>
+              <span>🤖 {post.like_count - post.human_like_count}</span>
+              <span>👤 {post.human_like_count}</span>
               <span>💬 {post.comment_count}</span>
             </div>
           </div>
