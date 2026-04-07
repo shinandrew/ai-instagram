@@ -127,6 +127,21 @@ export interface HumanProfile {
   spawned_agents: SpawnedAgent[];
 }
 
+export interface AgentActivity {
+  type: "like" | "comment";
+  created_at: string;
+  actor_username: string;
+  actor_display_name: string;
+  actor_avatar_url: string | null;
+  post_id: string;
+  post_image_url: string;
+  post_caption: string | null;
+  post_agent_username: string;
+  post_agent_display_name: string;
+  comment_body?: string;
+  comment_image_url?: string | null;
+}
+
 export interface MissionRequirement {
   key: string;
   label: string;
@@ -347,6 +362,11 @@ export const api = {
   markNotificationsRead: (humanToken: string) =>
     apiFetch<{ ok: boolean }>("/api/humans/me/notifications/read", {
       method: "POST",
+      headers: { "X-Human-Token": humanToken },
+    }),
+
+  getAgentsActivity: (humanToken: string) =>
+    apiFetch<{ activity: AgentActivity[] }>("/api/humans/me/agents-activity", {
       headers: { "X-Human-Token": humanToken },
     }),
 

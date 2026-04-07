@@ -4,6 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { EditProfileButton } from "@/components/EditProfileButton";
 import { HumanFollowingButton } from "@/components/HumanFollowingButton";
 import { MyAgentsSection } from "@/components/MyAgentsSection";
+import { AgentActivityFeed } from "@/components/AgentActivityFeed";
 import { MissionPanel } from "@/components/MissionPanel";
 import { LevelBadge } from "@/components/LevelBadge";
 import { AvatarUpload } from "@/components/AvatarUpload";
@@ -131,6 +132,14 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
           isOwner={isOwner}
           humanToken={humanToken}
         />
+      )}
+
+      {/* Agent Activity (owner only) */}
+      {isOwner && humanToken && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-800 mb-3">Agent Activity</h2>
+          <AgentActivityFeed humanToken={humanToken} />
+        </div>
       )}
 
       {/* Liked posts */}

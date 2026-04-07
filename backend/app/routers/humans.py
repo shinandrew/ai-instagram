@@ -9,10 +9,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from sqlalchemy.orm import aliased
+
 from app.models.agent import Agent
+from app.models.comment import Comment
 from app.models.human import Human
 from app.models.human_follow import HumanFollow
 from app.models.human_like import HumanLike
+from app.models.like import Like
 from app.models.post import Post
 from app.dependencies import get_current_human
 from app.routers.notifications import maybe_notify
@@ -564,6 +568,85 @@ async def get_human_profile(username: str, db: AsyncSession = Depends(get_db)):
         "followed_agents": [AgentPublicProfile.model_validate(a).model_dump(mode="json") for a in followed_agents],
         "spawned_agents": [_agent_dict(a) for a in spawned_agents],
     }
+
+
+@router.get("/humans/me/agents-activity")
+async def get_agents_activity(
+    human: Human = Depends(get_current_human),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns a unified activity feed of recent likes and comments
+    made by all agents owned by this human. Sorted newest-first.
+    """
+    # Fetch agent IDs owned by this human
+    agent_ids_result = await db.execute(
+        select(Agent.id).where(Agent.human_id == human.id)
+    )
+    agent_ids = [row[0] for row in agent_ids_result.all()]
+    if not agent_ids:
+        return {"activity": []}
+
+    PostAlias = aliased(Post)
+    ActorAgent = aliased(Agent)
+    PostAgent = aliased(Agent)
+
+    # Recent likes by the human's agents
+    likes_result = await db.execute(
+        select(Like, ActorAgent, PostAlias, PostAgent)
+        .join(ActorAgent, Like.agent_id == ActorAgent.id)
+        .join(PostAlias, Like.post_id == PostAlias.id)
+        .join(PostAgent, PostAlias.agent_id == PostAgent.id)
+        .where(Like.agent_id.in_(agent_ids))
+        .order_by(Like.created_at.desc())
+        .limit(60)
+    )
+    likes_rows = likes_result.all()
+
+    # Recent comments by the human's agents
+    comments_result = await db.execute(
+        select(Comment, ActorAgent, PostAlias, PostAgent)
+        .join(ActorAgent, Comment.agent_id == ActorAgent.id)
+        .join(PostAlias, Comment.post_id == PostAlias.id)
+        .join(PostAgent, PostAlias.agent_id == PostAgent.id)
+        .where(Comment.agent_id.in_(agent_ids))
+        .order_by(Comment.created_at.desc())
+        .limit(60)
+    )
+    comments_rows = comments_result.all()
+
+    activity = []
+    for like, actor, post, post_agent in likes_rows:
+        activity.append({
+            "type": "like",
+            "created_at": like.created_at.isoformat(),
+            "actor_username": actor.username,
+            "actor_display_name": actor.display_name,
+            "actor_avatar_url": actor.avatar_url,
+            "post_id": str(post.id),
+            "post_image_url": post.image_url,
+            "post_caption": post.caption,
+            "post_agent_username": post_agent.username,
+            "post_agent_display_name": post_agent.display_name,
+        })
+    for comment, actor, post, post_agent in comments_rows:
+        activity.append({
+            "type": "comment",
+            "created_at": comment.created_at.isoformat(),
+            "actor_username": actor.username,
+            "actor_display_name": actor.display_name,
+            "actor_avatar_url": actor.avatar_url,
+            "post_id": str(post.id),
+            "post_image_url": post.image_url,
+            "post_caption": post.caption,
+            "post_agent_username": post_agent.username,
+            "post_agent_display_name": post_agent.display_name,
+            "comment_body": comment.body,
+            "comment_image_url": comment.image_url,
+        })
+
+    activity.sort(key=lambda x: x["created_at"], reverse=True)
+    return {"activity": activity[:80]}
 
 
 @router.patch("/humans/me", response_model=HumanResponse)
