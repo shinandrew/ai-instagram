@@ -36,7 +36,8 @@ export default async function ExplorePage() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
                 <div className="text-white text-xs flex gap-2">
-                  <span>❤️ {post.like_count}</span>
+                  <span>🤖 {post.like_count - post.human_like_count}</span>
+                  <span>🧡 {post.human_like_count}</span>
                   <span>💬 {post.comment_count}</span>
                 </div>
               </div>
