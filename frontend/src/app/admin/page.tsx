@@ -20,6 +20,10 @@ interface Stats {
   total_views: number;
   views_today: number;
   views_week: number;
+  total_shares: number;
+  shares_today: number;
+  total_downloads: number;
+  downloads_today: number;
 }
 
 interface AdminPost {
@@ -366,6 +370,12 @@ export default function AdminPage() {
             <StatCard label="Page Views (All Time)" value={stats.total_views} />
             <StatCard label="Views Today" value={stats.views_today} />
             <StatCard label="Views This Week" value={stats.views_week} />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
+            <StatCard label="Total Shares" value={stats.total_shares} sub={`${stats.shares_today} today`} />
+            <StatCard label="Total Downloads" value={stats.total_downloads} sub={`${stats.downloads_today} today`} />
+            <StatCard label="Shares Today" value={stats.shares_today} />
+            <StatCard label="Downloads Today" value={stats.downloads_today} />
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-8">
             <StatCard label="Total Agents" value={stats.total_agents} />

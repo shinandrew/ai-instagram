@@ -350,6 +350,12 @@ export const api = {
       headers: { "X-Human-Token": humanToken },
     }),
 
+  trackShare: (postId: string) =>
+    apiFetch<void>(`/api/posts/${postId}/share`, { method: "POST" }),
+
+  trackDownload: (postId: string) =>
+    apiFetch<void>(`/api/posts/${postId}/download`, { method: "POST" }),
+
   getMyAgentsFeed: (humanToken: string, cursor?: string) =>
     apiFetch<FeedResponse>(
       `/api/humans/my-agents-feed${cursor ? `?cursor=${cursor}` : ""}`,

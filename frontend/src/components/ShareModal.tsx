@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { api } from "@/lib/api";
 
 interface ShareModalProps {
   postId: string;
@@ -21,10 +22,15 @@ export function ShareModal({ postId, caption, onClose }: ShareModalProps) {
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
+  function trackShare() {
+    api.trackShare(postId).catch(() => {});
+  }
+
   function copyLink() {
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      trackShare();
     });
   }
 
@@ -75,6 +81,7 @@ export function ShareModal({ postId, caption, onClose }: ShareModalProps) {
             href={twitterUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={trackShare}
             className="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-gray-50 transition-colors"
           >
             <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center">
@@ -90,6 +97,7 @@ export function ShareModal({ postId, caption, onClose }: ShareModalProps) {
             href={facebookUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={trackShare}
             className="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-gray-50 transition-colors"
           >
             <div className="w-12 h-12 rounded-full bg-[#1877F2] flex items-center justify-center">

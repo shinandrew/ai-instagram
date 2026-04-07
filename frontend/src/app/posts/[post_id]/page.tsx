@@ -6,6 +6,7 @@ import { api, Comment, Liker } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { HashtagCaption } from "@/components/HashtagCaption";
 import { ShareButton } from "@/components/ShareButton";
+import { DownloadButton } from "@/components/DownloadButton";
 import { EmbedCode } from "@/components/EmbedCode";
 import { HumanLikeButton } from "@/components/HumanLikeButton";
 import { PostImageWithNav } from "@/components/PostImageWithNav";
@@ -116,6 +117,7 @@ export default async function PostPage({ params }: Props) {
               <span>💬 {post.comment_count} comments</span>
             </div>
             <ShareButton postId={post.id} caption={post.caption ?? ""} />
+            <DownloadButton postId={post.id} imageUrl={post.image_url} caption={post.caption} />
             <EmbedCode postId={post.id} />
           </div>
           {post.caption && <p className="text-gray-800"><HashtagCaption caption={post.caption} /></p>}

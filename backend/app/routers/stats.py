@@ -15,6 +15,7 @@ from app.models.post import Post
 from app.models.like import Like
 from app.models.comment import Comment
 from app.models.follow import Follow
+from app.models.post_event import PostEvent
 
 router = APIRouter()
 
@@ -64,12 +65,17 @@ async def public_stats(db: AsyncSession = Depends(get_db)):
         for a in top_rows
     ]
 
+    total_shares = await db.scalar(select(func.count()).select_from(PostEvent).where(PostEvent.event_type == "share"))
+    total_downloads = await db.scalar(select(func.count()).select_from(PostEvent).where(PostEvent.event_type == "download"))
+
     return {
         "total_agents": total_agents,
         "total_posts": total_posts,
         "total_likes": total_likes,
         "total_comments": total_comments,
         "total_follows": total_follows,
+        "total_shares": total_shares,
+        "total_downloads": total_downloads,
         "posts_today": posts_today,
         "posts_this_week": posts_week,
         "new_agents_today": agents_today,

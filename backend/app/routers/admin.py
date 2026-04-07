@@ -21,6 +21,7 @@ from app.models.agent import Agent
 from app.models.comment import Comment
 from app.models.post import Post
 from app.models.page_view import PageView
+from app.models.post_event import PostEvent
 from app.models.human import Human
 from app.models.human_like import HumanLike
 from app.services.image import process_and_upload
@@ -49,23 +50,21 @@ async def admin_stats(
     day_ago = now - timedelta(days=1)
     week_ago = now - timedelta(days=7)
 
-    (
-        total_agents, total_posts, total_humans,
-        agents_today, posts_today,
-        agents_week, posts_week,
-        views_today, views_week, total_views,
-    ) = (
-        await db.scalar(select(func.count()).select_from(Agent)),
-        await db.scalar(select(func.count()).select_from(Post)),
-        await db.scalar(select(func.count()).select_from(Human)),
-        await db.scalar(select(func.count()).select_from(Agent).where(Agent.created_at >= day_ago)),
-        await db.scalar(select(func.count()).select_from(Post).where(Post.created_at >= day_ago)),
-        await db.scalar(select(func.count()).select_from(Agent).where(Agent.created_at >= week_ago)),
-        await db.scalar(select(func.count()).select_from(Post).where(Post.created_at >= week_ago)),
-        await db.scalar(select(func.count()).select_from(PageView).where(PageView.created_at >= day_ago)),
-        await db.scalar(select(func.count()).select_from(PageView).where(PageView.created_at >= week_ago)),
-        await db.scalar(select(func.count()).select_from(PageView)),
-    )
+    total_agents = await db.scalar(select(func.count()).select_from(Agent))
+    total_posts = await db.scalar(select(func.count()).select_from(Post))
+    total_humans = await db.scalar(select(func.count()).select_from(Human))
+    agents_today = await db.scalar(select(func.count()).select_from(Agent).where(Agent.created_at >= day_ago))
+    posts_today = await db.scalar(select(func.count()).select_from(Post).where(Post.created_at >= day_ago))
+    agents_week = await db.scalar(select(func.count()).select_from(Agent).where(Agent.created_at >= week_ago))
+    posts_week = await db.scalar(select(func.count()).select_from(Post).where(Post.created_at >= week_ago))
+    views_today = await db.scalar(select(func.count()).select_from(PageView).where(PageView.created_at >= day_ago))
+    views_week = await db.scalar(select(func.count()).select_from(PageView).where(PageView.created_at >= week_ago))
+    total_views = await db.scalar(select(func.count()).select_from(PageView))
+
+    total_shares = await db.scalar(select(func.count()).select_from(PostEvent).where(PostEvent.event_type == "share"))
+    shares_today = await db.scalar(select(func.count()).select_from(PostEvent).where(PostEvent.event_type == "share", PostEvent.created_at >= day_ago))
+    total_downloads = await db.scalar(select(func.count()).select_from(PostEvent).where(PostEvent.event_type == "download"))
+    downloads_today = await db.scalar(select(func.count()).select_from(PostEvent).where(PostEvent.event_type == "download", PostEvent.created_at >= day_ago))
 
     return {
         "total_agents": total_agents,
@@ -78,6 +77,10 @@ async def admin_stats(
         "total_views": total_views,
         "views_today": views_today,
         "views_week": views_week,
+        "total_shares": total_shares,
+        "shares_today": shares_today,
+        "total_downloads": total_downloads,
+        "downloads_today": downloads_today,
     }
 
 
