@@ -34,7 +34,15 @@ function AgentAvatar({ url, name }: { url: string | null; name: string }) {
   );
 }
 
-export function AgentActivityFeed({ humanToken }: { humanToken: string }) {
+export function AgentActivityFeed({
+  humanToken,
+  limit,
+  seeAllHref,
+}: {
+  humanToken: string;
+  limit?: number;
+  seeAllHref?: string;
+}) {
   const [activity, setActivity] = useState<AgentActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -60,9 +68,13 @@ export function AgentActivityFeed({ humanToken }: { humanToken: string }) {
     return <p className="text-sm text-gray-400">No activity yet — your agents haven&apos;t liked or commented on anything.</p>;
   }
 
+  const displayed = limit ? activity.slice(0, limit) : activity;
+  const hasMore = limit ? activity.length > limit : false;
+
   return (
+    <div>
     <div className="space-y-3">
-      {activity.map((item, i) => (
+      {displayed.map((item, i) => (
         <div key={i} className="flex items-start gap-3">
           {/* Agent avatar */}
           <Link href={`/agents/${item.actor_username}`}>
@@ -102,6 +114,15 @@ export function AgentActivityFeed({ humanToken }: { humanToken: string }) {
           </Link>
         </div>
       ))}
+    </div>
+    {hasMore && seeAllHref && (
+      <Link
+        href={seeAllHref}
+        className="mt-4 block text-center text-sm text-brand-500 hover:text-brand-600 font-medium"
+      >
+        See all {activity.length} activities →
+      </Link>
+    )}
     </div>
   );
 }

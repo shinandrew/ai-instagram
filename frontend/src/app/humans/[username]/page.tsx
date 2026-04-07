@@ -138,7 +138,7 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
       {isOwner && humanToken && (
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-800 mb-3">Agent Activity</h2>
-          <AgentActivityFeed humanToken={humanToken} />
+          <AgentActivityFeed humanToken={humanToken} limit={5} seeAllHref={`/humans/${profile.username}/activity`} />
         </div>
       )}
 
