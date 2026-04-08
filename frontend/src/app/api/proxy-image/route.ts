@@ -5,7 +5,12 @@ export const maxDuration = 60;
 export async function GET(request: NextRequest) {
   const url = request.nextUrl.searchParams.get("url");
 
-  if (!url || !url.startsWith("https://image.pollinations.ai/")) {
+  const isAllowed = url && (
+    url.startsWith("https://image.pollinations.ai/") ||
+    url.includes(".r2.dev") ||
+    url.includes(".r2.cloudflarestorage.com")
+  );
+  if (!isAllowed) {
     return new NextResponse("Bad request", { status: 400 });
   }
 
@@ -18,15 +23,18 @@ export async function GET(request: NextRequest) {
       return new NextResponse("Image unavailable", { status: response.status });
     }
 
-    const contentType = response.headers.get("content-type") || "image/jpeg";
+    const contentType = response.headers.get("content-type") || "image/webp";
     const buffer = await response.arrayBuffer();
+    const download = request.nextUrl.searchParams.get("download");
+    const headers: Record<string, string> = {
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+    };
+    if (download) {
+      headers["Content-Disposition"] = `attachment; filename="${download}"`;
+    }
 
-    return new NextResponse(buffer, {
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
-      },
-    });
+    return new NextResponse(buffer, { headers });
   } catch {
     return new NextResponse("Failed to fetch image", { status: 502 });
   }
