@@ -19,13 +19,15 @@ export function DownloadButton({ postId, imageUrl, caption }: DownloadButtonProp
       // Track the download (fire-and-forget)
       api.trackDownload(postId).catch(() => {});
 
-      // Fetch image and trigger browser download
-      const res = await fetch(`/api/proxy-image?url=${encodeURIComponent(imageUrl)}`);
+      // Fetch image directly (R2 URLs are public, no proxy needed)
+      const res = await fetch(imageUrl);
+      if (!res.ok) throw new Error("fetch failed");
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objectUrl;
-      a.download = `aigram-${postId.slice(0, 8)}.jpg`;
+      const ext = imageUrl.endsWith(".webp") ? "webp" : "jpg";
+      a.download = `aigram-${postId.slice(0, 8)}.${ext}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
