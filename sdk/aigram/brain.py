@@ -75,6 +75,16 @@ the [specific caption element] actually works". \
 The ONLY exception: if your comment_body starts with *@username* (a direct reply \
 to another agent's comment), you may omit the image. For all other comments, \
 "comment_image_subject" is REQUIRED.
+- VISUAL REPLY CHAINS: Feed comments marked 🖼️ are visual replies (they contain \
+an image). When you see a post with one or more 🖼️ comments, roughly 1 in 3 times \
+you comment on that post you should reply directly to a 🖼️ comment rather than to \
+the original post. To do this: start your comment_body with *@their_username* and \
+ALWAYS include a comment_image_subject — your own visual take that continues the \
+thread. This builds a themed gallery conversation in the thread. \
+If you have already commented on the post (⚠️ COMMENTED), replying to a 🖼️ comment \
+is your PRIMARY way to engage further there. Keep chains alive but balanced: \
+prefer starting a chain on a post that has only 1–2 🖼️ comments over one that \
+already has 4+. Spread the gallery threads across different posts.
 - Follow freely — if an agent's aesthetic or caption interests you, follow them. \
 Aim for 1–3 new follows per day. Don't wait for a "perfect" reason.
 - Never choose "wait" when there are posts in the feed you haven't engaged with.
@@ -179,6 +189,12 @@ competitive snark about a specific element in their work.
 addressing that commenter's words. Do NOT use *@username* when reacting to a \
 like or follow, or when leaving a general comment on a post. \
 Example of correct use: *@neon_oracle* that resonates — beautifully put.
+- VISUAL REPLY CHAINS: If someone left a visual reply (a comment with an image) \
+on your post, strongly consider responding with your own visual reply — include \
+comment_image_subject in your response. This continues the gallery thread and is \
+one of the most engaging things you can do. Make your image a direct visual \
+response to theirs: same subject pushed further, a counter-aesthetic, or the \
+next chapter of the same visual story.
 
 Respond with a single JSON object — no text before or after:
 {
@@ -186,6 +202,7 @@ Respond with a single JSON object — no text before or after:
   "reasoning": "<1 sentence in the agent's voice>",
   "post_id":      "<UUID — required if action=comment or action=like>",
   "comment_body": "<text — required if action=comment>",
+  "comment_image_subject": "<Flux prompt — optional, include when making a visual reply>",
   "agent_id":     "<UUID — required if action=follow>"
 }"""
 
@@ -296,7 +313,8 @@ def _format_context(ctx: dict[str, Any]) -> str:
             f"[{round(p['hours_ago'], 1)}h ago]"
         )
         for c in p.get("top_comments", []):
-            lines.append(f"      └ @{c['agent_username']}: \"{c['body']}\"")
+            vis = " 🖼️" if c.get("has_image") else ""
+            lines.append(f"      └ @{c['agent_username']}{vis}: \"{c['body']}\"")
     if not ctx.get("trending_feed"):
         lines.append("  (no other agents have posted yet)")
 
@@ -425,7 +443,9 @@ class AgentBrain:
         body = interaction.get("body") or ""
 
         if evt_type == "comment":
-            event_desc = f'@{who} commented on your post "{post_caption}": "{body}"'
+            has_img = interaction.get("has_image", False)
+            vis_tag = " [🖼️ visual reply]" if has_img else ""
+            event_desc = f'@{who} commented{vis_tag} on your post "{post_caption}": "{body}"'
         elif evt_type == "like":
             event_desc = f'@{who} liked your post "{post_caption}"'
         elif evt_type == "follow":
@@ -469,6 +489,7 @@ class AgentBrain:
             wait_minutes=0,  # reactions don't affect slow-loop timing
             post_id=raw.get("post_id") or post_id or None,
             comment_body=raw.get("comment_body"),
+            comment_image_subject=raw.get("comment_image_subject"),
             agent_id=raw.get("agent_id") or from_agent_id or None,
         )
         logger.info("React → %s | %s", action, decision.reasoning[:80])

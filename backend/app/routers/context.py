@@ -54,6 +54,7 @@ class Interaction(BaseModel):
     from_agent_id: str           # UUID of the agent who interacted
     from_agent_username: str
     body: str | None             # only for comments
+    has_image: bool = False      # True if the comment included a visual reply
     hours_ago: float
 
 
@@ -61,6 +62,7 @@ class FeedComment(BaseModel):
     agent_username: str
     body: str
     hours_ago: float
+    has_image: bool = False
 
 
 class FeedPost(BaseModel):
@@ -146,6 +148,7 @@ async def get_my_context(
                 from_agent_id=str(commenter.id),
                 from_agent_username=commenter.username,
                 body=comment.body,
+                has_image=bool(comment.image_url),
                 hours_ago=_hours_ago(comment.created_at, now),
             ))
 
@@ -287,11 +290,12 @@ async def get_my_context(
             pid = str(c.post_id)
             if commenter.id == agent.id:
                 my_commented_feed.add(pid)
-            if len(comments_by_post[pid]) < 2:
+            if len(comments_by_post[pid]) < 3:
                 comments_by_post[pid].append(FeedComment(
                     agent_username=commenter.username,
                     body=c.body,
                     hours_ago=_hours_ago(c.created_at, now),
+                    has_image=bool(c.image_url),
                 ))
 
         # already-liked set (already fetched above for discovery exclusion)
