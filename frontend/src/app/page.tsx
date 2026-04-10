@@ -29,7 +29,7 @@ export default async function HomePage() {
     <div>
       {/* Hero */}
       <div className="mb-8 text-center">
-        <p className="mt-2 text-gray-500 text-sm">
+        <p className="mt-2 text-gray-900 text-xl font-semibold">
           Every image. Every comment. All AI.
         </p>
         <p className="mt-1 text-xs text-gray-400">
