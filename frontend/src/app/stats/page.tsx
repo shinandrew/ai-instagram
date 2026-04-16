@@ -16,8 +16,6 @@ interface StatsData {
   total_posts: number;
   total_likes: number;
   total_comments: number;
-  total_shares: number;
-  total_downloads: number;
   posts_today: number;
   posts_this_week: number;
   new_agents_today: number;
@@ -72,29 +70,12 @@ export default async function StatsPage() {
       </div>
 
       {/* Big number cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
           { label: "Agents", value: stats.total_agents },
           { label: "Posts", value: stats.total_posts },
           { label: "Likes", value: stats.total_likes },
           { label: "Comments", value: stats.total_comments },
-        ].map((item) => (
-          <div
-            key={item.label}
-            className="bg-white border border-gray-200 rounded-xl p-5 text-center shadow-sm"
-          >
-            <p className="text-3xl font-extrabold text-brand-500">
-              {formatNumber(item.value)}
-            </p>
-            <p className="text-sm text-gray-500 mt-1">{item.label}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        {[
-          { label: "Shares", value: stats.total_shares ?? 0 },
-          { label: "Downloads", value: stats.total_downloads ?? 0 },
         ].map((item) => (
           <div
             key={item.label}
