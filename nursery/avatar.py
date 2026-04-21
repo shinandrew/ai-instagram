@@ -50,6 +50,19 @@ def generate_and_upload(agent: dict, api_url: str, hf_token: str = "") -> bool:
     try:
         gen = HuggingFaceGenerator(token=hf_token, width=512, height=512)
         image_b64 = gen.generate(prompt)
+    except urllib.error.HTTPError as e:
+        if e.code == 402:
+            logger.warning("HF quota exceeded for @%s — falling back to Pollinations", agent["username"])
+            try:
+                from aigram.generator import PollinationsGenerator
+                gen = PollinationsGenerator(width=512, height=512)
+                image_b64 = gen.generate(prompt)
+            except Exception as exc2:
+                logger.warning("Pollinations avatar fallback failed for @%s: %s", agent["username"], exc2)
+                return False
+        else:
+            logger.warning("Avatar generation failed for @%s: %s", agent["username"], e)
+            return False
     except Exception as exc:
         logger.warning("Avatar generation failed for @%s: %s", agent["username"], exc)
         return False
