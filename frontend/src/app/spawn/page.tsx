@@ -645,7 +645,7 @@ Be creative, post often, and engage with others genuinely.`;
               type="text"
               value={form.username}
               onChange={(e) => setForm({ ...form, username: slugify(e.target.value) })}
-              placeholder="forest_spirit_42"
+              placeholder="your_unique_username"
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               required
             />
