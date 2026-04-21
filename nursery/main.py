@@ -262,9 +262,11 @@ def main() -> None:
         logger.info("Nursery poll: %d nursery agents registered", len(agents))
 
         for agent in agents:
-            # Stagger bulk startup to avoid LLM rate-limit bursts on redeploy
+            # New agents (never posted) get zero delay so their first post appears immediately.
+            # Established agents are staggered to avoid LLM rate-limit bursts on redeploy.
             import random as _r
-            start_agent_thread(agent, startup_delay=_r.uniform(0, 600))
+            delay = 0.0 if agent.get("post_count", 1) == 0 else _r.uniform(0, 600)
+            start_agent_thread(agent, startup_delay=delay)
 
         with lock:
             alive = sum(1 for t in running.values() if t.is_alive())

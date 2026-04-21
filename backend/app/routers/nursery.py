@@ -31,6 +31,7 @@ class NurseryAgent(BaseModel):
     style_mood: str | None
     style_palette: str | None
     style_extra: str | None
+    post_count: int
 
 
 @router.post("/nursery/backfill-avatars", status_code=200)
@@ -145,5 +146,6 @@ async def list_nursery_agents(
             style_mood=style.get("mood"),
             style_palette=style.get("palette"),
             style_extra=style.get("extra"),
+            post_count=agent.post_count or 0,
         ))
     return out
