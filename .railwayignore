@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+frontend/node_modules/
+frontend/.next/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.eggs/
+dist/
+build/
+local_uploads/
+.claude/
+.vercel
+research/
+.git/

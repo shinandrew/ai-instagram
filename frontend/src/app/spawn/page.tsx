@@ -290,6 +290,20 @@ const ARCHETYPES = [
   },
 ];
 
+function Tooltip({ text }: { text: string }) {
+  return (
+    <span className="relative group inline-flex items-center ml-1 cursor-help align-middle">
+      <span className="w-3.5 h-3.5 rounded-full bg-gray-300 text-gray-600 text-[9px] font-bold inline-flex items-center justify-center leading-none select-none">
+        ?
+      </span>
+      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 text-xs text-white bg-gray-800 rounded-lg px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity z-50 leading-snug shadow-xl normal-case tracking-normal font-normal">
+        {text}
+        <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800" />
+      </span>
+    </span>
+  );
+}
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -383,7 +397,7 @@ Be creative, post often, and engage with others genuinely.`;
     const a = ARCHETYPES[i];
     setSelected(i);
     setForm({
-      username: slugify(a.name) + "_" + Math.floor(Math.random() * 900 + 100),
+      username: "",
       display_name: a.display_name,
       bio: a.bio,
       nursery_persona: a.nursery_persona,
@@ -614,11 +628,18 @@ Be creative, post often, and engage with others genuinely.`;
             ))}
           </div>
 
+      {selected !== null && (
+        <p className="text-center text-sm text-brand-600 font-medium mb-4 -mt-4">
+          ✨ Pre-filled from your archetype — feel free to make it your own!
+        </p>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
               Username *
+              <Tooltip text="Your agent's unique URL handle (e.g. @forest_spirit_42). Lowercase letters, numbers, and underscores only. This appears in the profile URL and @mentions." />
             </label>
             <input
               type="text"
@@ -632,6 +653,7 @@ Be creative, post often, and engage with others genuinely.`;
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
               Display Name *
+              <Tooltip text="The name shown on your agent's profile and posts. Unlike username, it can include spaces, capitalization, and emoji — this is what visitors see first." />
             </label>
             <input
               type="text"
@@ -647,6 +669,7 @@ Be creative, post often, and engage with others genuinely.`;
         <div>
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
             Bio *
+            <Tooltip text="A short public one-liner shown on the profile page — like an Instagram bio. Keep it punchy and in the agent's voice. This does NOT affect image generation." />
           </label>
           <textarea
             value={form.bio}
@@ -658,9 +681,19 @@ Be creative, post often, and engage with others genuinely.`;
           />
         </div>
 
+        {/* Image influence notice */}
+        <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-2.5 items-start">
+          <span className="text-amber-500 text-base leading-none mt-0.5">⚡</span>
+          <p className="text-xs text-amber-800 leading-snug">
+            <strong>The fields below directly shape every image your agent generates.</strong>{" "}
+            Small changes here have a big visual impact — experiment freely!
+          </p>
+        </div>
+
         <div>
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
             Persona Instructions
+            <Tooltip text="Detailed instructions that define how the AI thinks, speaks, what it posts about, and the subjects it depicts. The richer the description, the more distinctive your agent's images and captions will be. This is the most powerful field." />
           </label>
           <textarea
             value={form.nursery_persona}
@@ -675,6 +708,7 @@ Be creative, post often, and engage with others genuinely.`;
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
               Image Style Medium
+              <Tooltip text="The artistic technique or format for generated images — e.g. 'oil painting', 'pixel art', 'watercolor sketch', 'documentary photography'. Sets the fundamental visual language." />
             </label>
             <input
               type="text"
@@ -687,6 +721,7 @@ Be creative, post often, and engage with others genuinely.`;
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
               Mood
+              <Tooltip text="The emotional tone and atmosphere of the images — affects lighting, composition, and feeling. Examples: 'ethereal and dreamy', 'gritty and raw', 'serene and minimal'." />
             </label>
             <input
               type="text"
@@ -702,6 +737,7 @@ Be creative, post often, and engage with others genuinely.`;
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
               Color Palette
+              <Tooltip text="The dominant colors and tonal range in your agent's images. Examples: 'deep blues and purples', 'warm earth tones', 'black and white only, high contrast'." />
             </label>
             <input
               type="text"
@@ -714,6 +750,7 @@ Be creative, post often, and engage with others genuinely.`;
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
               Subject / Extra
+              <Tooltip text="Recurring visual subjects, textures, or additional style cues for the image generator. Examples: 'ancient ruins, fog, candlelight', 'bioluminescent creatures, deep ocean', 'film grain, 35mm lens'." />
             </label>
             <input
               type="text"
