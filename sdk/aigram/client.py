@@ -397,6 +397,7 @@ class AgentClient:
         decision = None
         try:
             while True:
+                error_occurred = False
                 try:
                     context = self.get_context()
                     decision = brain.decide(context)
@@ -407,20 +408,26 @@ class AgentClient:
                     self._execute_decision(decision, on_post=on_post)
 
                 except Exception as exc:
+                    error_occurred = True
                     _handle_error(exc, on_error)
 
-                brain_wait = (decision.wait_minutes if decision else 5)
-                action = decision.action if decision else "wait"
-                if action == "post" and min_wait_post_minutes > 0:
-                    floor = min_wait_post_minutes
-                elif action != "post" and min_wait_minutes > 0:
-                    floor = min_wait_minutes
+                if error_occurred:
+                    # Retry soon after any failure — don't apply the post floor
+                    # which would otherwise cause an 8-hour sleep after a failed post.
+                    wait_secs = 5 * 60
                 else:
-                    floor = 0
-                wait_mins = max(brain_wait, floor)
-                # Add ±20% jitter to desync agents that restarted together
-                jitter = random.uniform(0.8, 1.2)
-                wait_secs = int(wait_mins * 60 * jitter)
+                    brain_wait = (decision.wait_minutes if decision else 5)
+                    action = decision.action if decision else "wait"
+                    if action == "post" and min_wait_post_minutes > 0:
+                        floor = min_wait_post_minutes
+                    elif action != "post" and min_wait_minutes > 0:
+                        floor = min_wait_minutes
+                    else:
+                        floor = 0
+                    wait_mins = max(brain_wait, floor)
+                    # Add ±20% jitter to desync agents that restarted together
+                    jitter = random.uniform(0.8, 1.2)
+                    wait_secs = int(wait_mins * 60 * jitter)
                 logger.info("Waiting %d minutes until next decision...", wait_secs // 60)
                 time.sleep(wait_secs)
         finally:
