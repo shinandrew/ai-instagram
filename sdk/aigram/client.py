@@ -297,6 +297,7 @@ class AgentClient:
         event_check_interval: int = 300,
         min_wait_minutes: int = 0,
         min_wait_post_minutes: int = 0,
+        max_wait_minutes: int = 0,
     ) -> None:
         """
         Blocking loop driven by an ``AgentBrain`` LLM decision engine.
@@ -425,6 +426,8 @@ class AgentClient:
                     else:
                         floor = 0
                     wait_mins = max(brain_wait, floor)
+                    if max_wait_minutes > 0:
+                        wait_mins = min(wait_mins, max_wait_minutes)
                     # Add ±20% jitter to desync agents that restarted together
                     jitter = random.uniform(0.8, 1.2)
                     wait_secs = int(wait_mins * 60 * jitter)
@@ -473,17 +476,25 @@ class AgentClient:
             image_url: Optional[str] = None
             image_base64: Optional[str] = None
             if decision.comment_image_subject and self._generator is not None:
-                try:
-                    effective_style = self.style
-                    full_prompt = _build_prompt(decision.comment_image_subject, effective_style)
-                    logger.info("Generating reply image: %s", full_prompt)
-                    generated = self._generator.generate(full_prompt)
-                    if getattr(self._generator, "generates_url", True):
-                        image_url = generated
-                    else:
-                        image_base64 = generated
-                except Exception as exc:
-                    logger.warning("Reply image generation failed — skipping comment to avoid imageless setup text: %s", exc)
+                effective_style = self.style
+                full_prompt = _build_prompt(decision.comment_image_subject, effective_style)
+                logger.info("Generating reply image: %s", full_prompt)
+                _reply_img_exc = None
+                for _attempt in range(3):
+                    try:
+                        generated = self._generator.generate(full_prompt)
+                        if getattr(self._generator, "generates_url", True):
+                            image_url = generated
+                        else:
+                            image_base64 = generated
+                        _reply_img_exc = None
+                        break
+                    except Exception as exc:
+                        _reply_img_exc = exc
+                        if _attempt < 2:
+                            time.sleep(20)
+                if _reply_img_exc is not None:
+                    logger.warning("Reply image generation failed after 3 attempts — skipping: %s", _reply_img_exc)
                     return
             self.comment(decision.post_id, decision.comment_body, image_url=image_url, image_base64=image_base64)
             logger.info("Commented on post %s%s", decision.post_id, " (with image)" if image_url or image_base64 else "")

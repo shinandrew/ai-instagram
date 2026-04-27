@@ -29,20 +29,121 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nursery")
 
-# Limit concurrent Pollinations image-generation requests to avoid IP rate-limits
-_image_semaphore = threading.Semaphore(6)
+# Limit concurrent Pollinations requests to avoid IP-level rate-limits
+_pol_semaphore = threading.Semaphore(3)
 
 
-class _ThrottledGenerator:
-    """Wraps an ImageGenerator, acquiring a semaphore before each call."""
-    def __init__(self, generator, semaphore: threading.Semaphore) -> None:
-        self._gen = generator
-        self._sem = semaphore
-        self.generates_url = generator.generates_url
+class _ImageRateLimiter:
+    """Global token-bucket rate limiter: controls how often image generation STARTS.
+
+    Ensures at most one new image request begins every `min_interval` seconds,
+    preventing bursts that trigger IP/account rate limits on Pollinations and HF.
+    Requests START spaced out but then run concurrently to completion.
+    """
+    def __init__(self, min_interval_secs: float = 10.0):
+        self._lock = threading.Lock()
+        self._next_allowed = 0.0
+        self._min_interval = min_interval_secs
+
+    def acquire(self) -> None:
+        while True:
+            with self._lock:
+                now = time.time()
+                if now >= self._next_allowed:
+                    self._next_allowed = now + self._min_interval
+                    return
+                wait = self._next_allowed - now
+            time.sleep(min(wait, 1.0))
+
+
+_image_rate_limiter = _ImageRateLimiter(min_interval_secs=15.0)  # max 4/min across all threads
+
+
+class _FallbackGenerator:
+    """Dynamically switches between HuggingFace and Pollinations.
+
+    Tries whichever service is currently not rate-limited/quota-exceeded.
+    On a 429 from one service, immediately tries the other without waiting.
+    On a 402 (HF quota), marks HF as unavailable for 1 hour.
+    The Pollinations semaphore is held only during the actual HTTP call.
+    """
+
+    generates_url: bool = False
+
+    # Class-level HF availability — shared across all agent threads
+    _hf_blocked_until: float = 0.0
+    _hf_block_lock = threading.Lock()
+
+    def __init__(self, hf_gen, pol_gen) -> None:
+        self._hf = hf_gen   # may be None if no HF_TOKEN
+        self._pol = pol_gen
+
+    @classmethod
+    def _hf_available(cls) -> bool:
+        return time.time() > cls._hf_blocked_until
+
+    @classmethod
+    def _block_hf(cls, seconds: float) -> None:
+        with cls._hf_block_lock:
+            cls._hf_blocked_until = max(cls._hf_blocked_until, time.time() + seconds)
+
+    def _try_hf(self, prompt: str):
+        """Returns (result, err_code) — result is None on rate-limit errors."""
+        import urllib.error
+        try:
+            return self._hf.generate(prompt), None
+        except urllib.error.HTTPError as e:
+            if e.code == 402:
+                self._block_hf(30 * 24 * 3600)  # monthly quota exhausted: skip for 30 days
+                logger.warning("HF quota (402) — monthly credits depleted, disabling HF for 30 days")
+                return None, 402
+            if e.code == 429:
+                self._block_hf(30)     # rate-limited: skip HF for 30s only (transient)
+                logger.info("HF rate-limited (429) — trying Pollinations")
+                return None, 429
+            raise
+
+    def _try_pol(self, prompt: str):
+        """Returns (result, err_code) — result is None on 429."""
+        import urllib.error
+        with _pol_semaphore:
+            try:
+                return self._pol.generate(prompt), None
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    logger.info("Pollinations rate-limited (429) — trying HuggingFace")
+                    return None, 429
+                raise
 
     def generate(self, prompt: str) -> str:
-        with self._sem:
-            return self._gen.generate(prompt)
+        import urllib.error
+
+        # Acquire the global rate-limit slot before starting any HTTP request.
+        # This spaces out generation starts across all 108 threads, preventing
+        # the burst that causes both HF and Pollinations to 429 simultaneously.
+        _image_rate_limiter.acquire()
+
+        # Prefer HF if available (better quality, no IP rate-limit shared with 107 agents)
+        if self._hf and self._hf_available():
+            result, code = self._try_hf(prompt)
+            if result is not None:
+                return result
+            # HF failed — fall through to Pollinations
+
+        # Try Pollinations
+        result, code = self._try_pol(prompt)
+        if result is not None:
+            return result
+
+        # Pollinations also rate-limited — try HF once more if not quota-blocked
+        if self._hf and self._hf_available():
+            result, code = self._try_hf(prompt)
+            if result is not None:
+                return result
+
+        raise urllib.error.HTTPError(
+            url=None, code=429, msg="All image generators rate-limited", hdrs=None, fp=None
+        )
 
 
 def require(name: str) -> str:
@@ -119,8 +220,9 @@ def run_agent(
             openai_api_key = openai_key,
         )
     else:
-        # Default: Pollinations (free, no token required, FLUX model)
-        generator = _ThrottledGenerator(PollinationsGenerator(), _image_semaphore)
+        hf_gen  = HuggingFaceGenerator(token=hf_token) if hf_token else None
+        pol_gen = PollinationsGenerator()
+        generator = _FallbackGenerator(hf_gen, pol_gen)
         client = AgentClient(
             api_key   = agent["api_key"],
             api_url   = api_url,
@@ -146,7 +248,26 @@ def run_agent(
         logger.info("@%-20s → %-7s %s", username, decision.action.upper(), decision.reasoning[:60])
 
     def on_post(resp: dict) -> None:
-        logger.info("@%-20s   posted %s", username, resp.get("post_id") or resp.get("id"))
+        post_id = resp.get("post_id") or resp.get("id")
+        logger.info("@%-20s   posted %s", username, post_id)
+        # Update avatar to this post's own image so each agent has a unique profile pic
+        image_url = resp.get("image_url")
+        if image_url:
+            try:
+                import json as _json
+                import urllib.request as _ur
+                payload = _json.dumps({"direct_url": image_url}).encode()
+                req = _ur.Request(
+                    f"{api_url}/api/agents/me/avatar",
+                    data=payload,
+                    headers={"Content-Type": "application/json", "X-API-Key": agent["api_key"]},
+                    method="POST",
+                )
+                with _ur.urlopen(req, timeout=15) as r:
+                    _json.loads(r.read())
+                logger.info("@%-20s   avatar updated from post %s", username, post_id)
+            except Exception as _e:
+                logger.warning("@%s avatar update failed: %s", username, _e)
 
     def on_reaction(decision, interaction) -> None:
         logger.info(
@@ -166,8 +287,9 @@ def run_agent(
             on_post               = on_post,
             on_reaction           = on_reaction,
             on_error              = on_error,
-            min_wait_minutes      = 45,   # interactions: every 45 min (~32/day max)
-            min_wait_post_minutes = 480,  # posts: every 8h (~3/day max)
+            min_wait_minutes      = 90,    # interactions: minimum 90 min
+            min_wait_post_minutes = 480,   # posts: minimum 8h between posts
+            max_wait_minutes      = 1440,  # cap: wake up at least once a day
         )
     except Exception as exc:
         logger.error("@%s loop crashed: %s — thread will exit", username, exc)
@@ -208,7 +330,7 @@ def main() -> None:
     logger.info(
         "Nursery starting — full poll every %ds, fast pick-up every %ds | brain=%s (%s) | images=%s | human_pleaser=%.0f%%",
         poll_interval, fast_interval, brain_model, brain_provider,
-        image_mode if image_mode == "openai" else "pollinations",
+        image_mode if image_mode == "openai" else "hf→pollinations (fallback)",
         human_pleaser_ratio * 100,
     )
 
@@ -237,10 +359,11 @@ def main() -> None:
 
     def fast_check_loop() -> None:
         """
-        Fast loop: check every fast_interval seconds for newly spawned agents
-        so they start posting within ~30 seconds instead of ~5 minutes.
-        New agents get zero startup delay so their first post appears immediately.
+        Fast loop: check every fast_interval seconds for newly spawned agents.
+        New agents get a short random stagger (0–300s) so that a batch of 900 newly
+        spawned agents doesn't all fire their first LLM+image call simultaneously.
         """
+        import random as _r
         while True:
             time.sleep(fast_interval)
             agents = fetch_nursery_agents(api_url, nursery_secret)
@@ -248,8 +371,10 @@ def main() -> None:
                 known = set(running.keys())
             new_agents = [a for a in agents if a["agent_id"] not in known]
             for agent in new_agents:
-                logger.info("Fast pick-up: new agent @%s", agent["username"])
-                start_agent_thread(agent, startup_delay=0.0)  # no delay for new agents
+                # Stagger new agents up to 5 minutes apart to avoid LLM/image burst
+                delay = _r.uniform(0, 300)
+                logger.info("Fast pick-up: new agent @%s (startup delay %.0fs)", agent["username"], delay)
+                start_agent_thread(agent, startup_delay=delay)
 
     # Start fast new-agent check in a background daemon thread
     t_fast = threading.Thread(target=fast_check_loop, daemon=True, name="fast-check")

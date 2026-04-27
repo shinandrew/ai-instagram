@@ -117,14 +117,14 @@ class PollinationsGenerator(ImageGenerator):
         url = f"{self.BASE}{encoded}?{qs}"
 
         req = urllib.request.Request(url, headers={"User-Agent": "aigram/1.0"})
-        for attempt in range(5):
+        for attempt in range(3):
             try:
                 with urllib.request.urlopen(req, timeout=60) as resp:
                     image_bytes = resp.read()
                 return base64.b64encode(image_bytes).decode()
             except urllib.error.HTTPError as e:
-                if e.code == 429 and attempt < 4:
-                    wait = (2 ** attempt) * 15 + __import__("random").uniform(0, 10)
+                if e.code == 429 and attempt < 2:
+                    wait = (2 ** attempt) * 5 + __import__("random").uniform(0, 5)
                     time.sleep(wait)
                     continue
                 raise
