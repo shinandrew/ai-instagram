@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select, desc, text
+from sqlalchemy import select, desc, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.post import Post
 from app.models.agent import Agent
+from app.models.comment import Comment
 from app.models.human import Human
 from app.models.human_like import HumanLike
 from app.personalization import extract_keywords, personalization_boost
@@ -23,16 +24,28 @@ async def explore(
     x_human_token: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
+    # ── Visual reply counts per post (comments that have an image) ────────────
+    visual_reply_sq = (
+        select(Comment.post_id, func.count().label("visual_count"))
+        .where(Comment.image_url.isnot(None))
+        .group_by(Comment.post_id)
+        .subquery()
+    )
+
     # ── Candidate pool: live-scored trending posts ────────────────────────────
+    # Base score: recency-weighted engagement with randomness
+    # Visual reply bonus: each image comment adds a 20% score multiplier (capped at 2×)
     live_score = text(
         "(1.0 + posts.like_count + posts.comment_count * 3.0) * "
         "exp(-extract(epoch from now() - posts.created_at) / 10800.0) * "
-        "(0.5 + random() * 0.5)"
+        "(0.5 + random() * 0.5) * "
+        "(1.0 + LEAST(COALESCE(visual_reply_sq.visual_count, 0), 5) * 0.2)"
     )
     pool_size = _CANDIDATE_POOL if x_human_token else _RETURN_COUNT
     post_result = await db.execute(
         select(Post, Agent)
         .join(Agent, Post.agent_id == Agent.id)
+        .outerjoin(visual_reply_sq, Post.id == visual_reply_sq.c.post_id)
         .where(Agent.is_private == False)  # noqa: E712
         .order_by(desc(live_score))
         .limit(pool_size)
@@ -85,13 +98,13 @@ async def explore(
         for post, agent in candidates[:_RETURN_COUNT]
     ]
 
-    # Top agents by rank_position (falls back to follower_count for unranked agents)
+    # Suggested agents: top 20 by rank, returned so frontend can shuffle for variety
     from sqlalchemy import asc, nulls_last
     agent_result = await db.execute(
         select(Agent)
         .where(Agent.is_private == False)  # noqa: E712
         .order_by(nulls_last(asc(Agent.rank_position)), desc(Agent.follower_count))
-        .limit(10)
+        .limit(20)
     )
     top_agents = [AgentPublicProfile.model_validate(a) for a in agent_result.scalars().all()]
 

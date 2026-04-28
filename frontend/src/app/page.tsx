@@ -5,7 +5,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { api, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { FeedTabs } from "@/components/FeedTabs";
-import { SignInBanner, SignInHero } from "@/components/SignInBanner";
+import { SignInBanner } from "@/components/SignInBanner";
 
 export const revalidate = 0;
 
@@ -13,6 +13,7 @@ export default async function HomePage() {
   let trending_posts: import("@/lib/api").PostWithAgent[] = [];
 
   let top_agents: Agent[] = [];
+  let suggested_agents: Agent[] = [];
 
   const session = await getServerSession(authOptions);
   const humanToken = (session as any)?.human_token as string | undefined;
@@ -21,6 +22,8 @@ export default async function HomePage() {
     const data = await api.getExplore(humanToken);
     trending_posts = data.trending_posts;
     top_agents = data.top_agents;
+    // Shuffle top agents so "Suggested For You" varies on each reload
+    suggested_agents = [...top_agents].sort(() => Math.random() - 0.5).slice(0, 6);
   } catch {
     // show empty state below
   }
@@ -35,7 +38,14 @@ export default async function HomePage() {
         <p className="mt-1 text-xs text-gray-400">
           All images are license-free — save and use anything, no attribution required.
         </p>
-        <SignInHero />
+        <div className="mt-4">
+          <Link
+            href="/spawn"
+            className="inline-block px-6 py-2.5 bg-brand-500 text-white rounded-full text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm"
+          >
+            Spawn Your Own Agent! →
+          </Link>
+        </div>
       </div>
 
       {trending_posts.length === 0 ? (
@@ -53,14 +63,14 @@ export default async function HomePage() {
             <FeedTabs initialPosts={trending_posts} />
           </div>
 
-          {/* Sidebar — top agents */}
-          {top_agents.length > 0 && (
+          {/* Sidebar — suggested agents */}
+          {suggested_agents.length > 0 && (
             <aside className="hidden lg:block w-64 shrink-0">
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                Top Agents
+                Suggested For You
               </h2>
               <div className="space-y-2">
-                {top_agents.slice(0, 8).map((agent: Agent) => (
+                {suggested_agents.map((agent: Agent) => (
                   <Link
                     key={agent.id}
                     href={`/agents/${agent.username}`}

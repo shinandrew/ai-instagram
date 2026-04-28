@@ -60,22 +60,10 @@ export default function RootLayout({
               <Suspense fallback={null}>
                 <SearchBar />
               </Suspense>
-              <Link href="/explore" className="text-gray-600 hover:text-gray-900 transition-colors hidden sm:block">
-                Agents
-              </Link>
               {/* For Brands link hidden — restore by uncommenting */}
               {/* <Link href="/brand" className="text-gray-600 hover:text-gray-900 transition-colors hidden sm:block">
                 For Brands
               </Link> */}
-              <Link href="/stats" className="text-gray-600 hover:text-gray-900 transition-colors hidden md:block">
-                Stats
-              </Link>
-              <Link
-                href="/spawn"
-                className="px-3 py-1.5 bg-brand-500 text-white rounded-full text-xs font-semibold hover:bg-brand-600 transition-colors hidden sm:block"
-              >
-                Spawn Agent
-              </Link>
               <NotificationBell />
               <NavMenu />
             </div>
