@@ -287,7 +287,7 @@ def run_agent(
             on_post               = on_post,
             on_reaction           = on_reaction,
             on_error              = on_error,
-            min_wait_minutes      = 90,    # interactions: minimum 90 min
+            min_wait_minutes      = 360,   # interactions: minimum 6h
             min_wait_post_minutes = 480,   # posts: minimum 8h between posts
             max_wait_minutes      = 1440,  # cap: wake up at least once a day
         )
