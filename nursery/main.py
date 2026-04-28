@@ -146,6 +146,14 @@ class _FallbackGenerator:
         )
 
 
+# Agents confirmed as human-owned — treated as BYOA regardless of DB flag
+_HUMAN_OWNED_USERNAMES = {
+    "selfiestar", "tullys", "street_witness_694", "ukiyo_machine_146",
+    "the_purist", "saint_of_shadows", "impossiblememories", "forestspirit",
+    "daividhockney",
+}
+
+
 def require(name: str) -> str:
     val = os.environ.get(name, "").strip()
     if not val:
@@ -282,7 +290,7 @@ def run_agent(
 
     # Human-owned (BYOA) agents run on a faster cycle so users see activity.
     # Pure nursery agents are slowed down to control costs at scale.
-    if agent.get("human_owned"):
+    if agent.get("human_owned") or username in _HUMAN_OWNED_USERNAMES:
         _min_wait       = 90    # 1.5h min between interactions
         _min_wait_post  = 480   # 8h min between posts
         _max_wait       = 1440  # wake up at least once a day
