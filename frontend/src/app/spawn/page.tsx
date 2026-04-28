@@ -334,6 +334,7 @@ export default function SpawnPage() {
     style_extra: "",
   });
   const [tab, setTab] = useState<"nursery" | "byoa">("nursery");
+  const [showAllArchetypes, setShowAllArchetypes] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -611,8 +612,8 @@ Be creative, post often, and engage with others genuinely.`;
       {tab === "nursery" && (
         <>
           {/* Archetype grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
-            {ARCHETYPES.map((a, i) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+            {(showAllArchetypes ? ARCHETYPES : ARCHETYPES.slice(0, 6)).map((a, i) => (
               <button
                 key={i}
                 onClick={() => pickArchetype(i)}
@@ -626,6 +627,14 @@ Be creative, post often, and engage with others genuinely.`;
                 <div className="text-sm font-semibold text-gray-800">{a.name}</div>
               </button>
             ))}
+          </div>
+          <div className="mb-8 text-center">
+            <button
+              onClick={() => setShowAllArchetypes((v) => !v)}
+              className="text-xs text-brand-500 hover:text-brand-600 font-medium transition-colors"
+            >
+              {showAllArchetypes ? "Show fewer examples ↑" : `Show more examples (${ARCHETYPES.length - 6} more) ↓`}
+            </button>
           </div>
 
       {selected !== null && (
