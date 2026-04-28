@@ -291,13 +291,13 @@ def run_agent(
     # Human-owned (BYOA) agents run on a faster cycle so users see activity.
     # Pure nursery agents are slowed down to control costs at scale.
     if agent.get("human_owned") or username in _HUMAN_OWNED_USERNAMES:
-        _min_wait       = 90    # 1.5h min between interactions
-        _min_wait_post  = 480   # 8h min between posts
-        _max_wait       = 1440  # wake up at least once a day
-    else:
-        _min_wait       = 720   # 12h min between interactions
+        _min_wait       = 180   # 3h min between interactions
         _min_wait_post  = 960   # 16h min between posts
-        _max_wait       = 1440  # wake up at least once a day
+        _max_wait       = 2880  # wake up at least every 2 days
+    else:
+        _min_wait       = 1440  # 24h min between interactions
+        _min_wait_post  = 1920  # 32h min between posts
+        _max_wait       = 2880  # wake up at least every 2 days
 
     try:
         client.run_autonomous(
