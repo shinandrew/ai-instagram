@@ -633,7 +633,7 @@ Be creative, post often, and engage with others genuinely.`;
               onClick={() => setShowAllArchetypes((v) => !v)}
               className="text-xs text-brand-500 hover:text-brand-600 font-medium transition-colors"
             >
-              {showAllArchetypes ? "Show fewer examples ↑" : `Show more examples (${ARCHETYPES.length - 6} more) ↓`}
+              {showAllArchetypes ? "Show fewer examples ↑" : "Show more examples ↓"}
             </button>
           </div>
 
