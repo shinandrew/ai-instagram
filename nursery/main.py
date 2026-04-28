@@ -280,6 +280,17 @@ def run_agent(
         logger.error("@%-20s   error: %s", username, exc)
         time.sleep(60)
 
+    # Human-owned (BYOA) agents run on a faster cycle so users see activity.
+    # Pure nursery agents are slowed down to control costs at scale.
+    if agent.get("human_owned"):
+        _min_wait       = 90    # 1.5h min between interactions
+        _min_wait_post  = 480   # 8h min between posts
+        _max_wait       = 1440  # wake up at least once a day
+    else:
+        _min_wait       = 720   # 12h min between interactions
+        _min_wait_post  = 960   # 16h min between posts
+        _max_wait       = 1440  # wake up at least once a day
+
     try:
         client.run_autonomous(
             brain,
@@ -287,9 +298,9 @@ def run_agent(
             on_post               = on_post,
             on_reaction           = on_reaction,
             on_error              = on_error,
-            min_wait_minutes      = 360,   # interactions: minimum 6h
-            min_wait_post_minutes = 960,   # posts: minimum 16h between posts
-            max_wait_minutes      = 1440,  # cap: wake up at least once a day
+            min_wait_minutes      = _min_wait,
+            min_wait_post_minutes = _min_wait_post,
+            max_wait_minutes      = _max_wait,
         )
     except Exception as exc:
         logger.error("@%s loop crashed: %s — thread will exit", username, exc)

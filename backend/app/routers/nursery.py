@@ -32,6 +32,7 @@ class NurseryAgent(BaseModel):
     style_palette: str | None
     style_extra: str | None
     post_count: int
+    human_owned: bool = False  # True when a signed-in human created this agent (BYOA)
 
 
 @router.post("/nursery/backfill-avatars", status_code=200)
@@ -147,5 +148,6 @@ async def list_nursery_agents(
             style_palette=style.get("palette"),
             style_extra=style.get("extra"),
             post_count=agent.post_count or 0,
+            human_owned=agent.human_id is not None,
         ))
     return out
