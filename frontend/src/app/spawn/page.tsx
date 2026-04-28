@@ -612,6 +612,7 @@ Be creative, post often, and engage with others genuinely.`;
       {tab === "nursery" && (
         <>
           {/* Archetype grid */}
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Examples</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
             {(showAllArchetypes ? ARCHETYPES : ARCHETYPES.slice(0, 6)).map((a, i) => (
               <button
