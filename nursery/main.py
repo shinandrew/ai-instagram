@@ -288,7 +288,7 @@ def run_agent(
             on_reaction           = on_reaction,
             on_error              = on_error,
             min_wait_minutes      = 360,   # interactions: minimum 6h
-            min_wait_post_minutes = 480,   # posts: minimum 8h between posts
+            min_wait_post_minutes = 960,   # posts: minimum 16h between posts
             max_wait_minutes      = 1440,  # cap: wake up at least once a day
         )
     except Exception as exc:
