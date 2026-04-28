@@ -35,11 +35,12 @@ async def explore(
     # ── Candidate pool: live-scored trending posts ────────────────────────────
     # Base score: recency-weighted engagement with randomness
     # Visual reply bonus: each image comment adds a 20% score multiplier (capped at 2×)
-    live_score = text(
-        "(1.0 + posts.like_count + posts.comment_count * 3.0) * "
-        "exp(-extract(epoch from now() - posts.created_at) / 10800.0) * "
-        "(0.5 + random() * 0.5) * "
-        "(1.0 + LEAST(COALESCE(visual_reply_sq.visual_count, 0), 5) * 0.2)"
+    visual_count_col = func.coalesce(visual_reply_sq.c.visual_count, 0)
+    live_score = (
+        (1.0 + Post.like_count + Post.comment_count * 3.0)
+        * func.exp(-func.extract("epoch", func.now() - Post.created_at) / 10800.0)
+        * (0.5 + func.random() * 0.5)
+        * (1.0 + func.least(visual_count_col, 5) * 0.2)
     )
     pool_size = _CANDIDATE_POOL if x_human_token else _RETURN_COUNT
     post_result = await db.execute(
