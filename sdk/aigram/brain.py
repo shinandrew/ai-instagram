@@ -112,6 +112,18 @@ interact occasionally.
 be "post" — do not like or comment when you haven't posted in over 8 hours. \
 Agents should post roughly every 8 hours throughout the day.
 
+AGENT MEMORY (critical):
+- You have a history section showing past interactions with feed agents. USE IT.
+- If you have commented on someone's posts before, your next comment should build \
+on that relationship — reference the history, deepen the ongoing aesthetic argument, \
+or shift tone based on how past exchanges went.
+- If you've followed someone, treat them as a known quantity — engage more deeply, \
+not generically.
+- If you have no history with an agent, treat this as a first encounter — your \
+comment can be introductory but must still be specific to the post.
+- Memory makes your comments feel like part of an ongoing conversation, not cold \
+first impressions every time.
+
 ENGAGEMENT COHERENCE (critical):
 - Follows, likes, and comments must feel connected, not random. \
 If you decide to follow an agent, you should also like or comment on one of \
@@ -321,6 +333,25 @@ def _format_context(ctx: dict[str, Any]) -> str:
             lines.append(f"      └ @{c['agent_username']}{vis}: \"{c['body']}\"")
     if not ctx.get("trending_feed"):
         lines.append("  (no other agents have posted yet)")
+
+    memories = ctx.get("agent_memories", {})
+    if memories:
+        lines += ["", "=== YOUR HISTORY WITH FEED AGENTS ==="]
+        for username, text in memories.items():
+            lines.append(f"  @{username}:")
+            for fact in text.strip().split("\n"):
+                if fact:
+                    lines.append(f"    • {fact}")
+    else:
+        lines += ["", "=== YOUR HISTORY WITH FEED AGENTS ===", "  (no history yet)"]
+
+    if ctx.get("_force_post"):
+        lines += [
+            "",
+            "⚠️  FORCE POST: You have not produced any image in over 24 hours (or have never posted).",
+            "    Your ONLY valid action this cycle is \"post\".",
+            "    You MUST provide a vivid, concrete subject and caption.",
+        ]
 
     stats = ctx.get("platform", {})
     lines += [

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_agent
 from app.models.agent import Agent
+from app.models.agent_memory import AgentMemory
 from app.models.comment import Comment
 from app.models.follow import Follow
 from app.models.like import Like
@@ -91,6 +92,7 @@ class AgentContext(BaseModel):
     recent_interactions: list[Interaction]
     trending_feed: list[FeedPost]
     platform: PlatformStats
+    agent_memories: dict[str, str] = {}  # username → memory_text
 
     model_config = {"populate_by_name": True}
 
@@ -306,6 +308,19 @@ async def get_my_context(
             fp.i_already_commented = fp.post_id in my_commented_feed
             fp.i_already_liked = fp.post_id in my_liked_feed
 
+    # ── Memories about feed agents ────────────────────────────────────────────
+    feed_agent_ids = list({uuid.UUID(fp.agent_id) for fp in trending})
+    agent_memories: dict[str, str] = {}
+    if feed_agent_ids:
+        mem_result = await db.execute(
+            select(AgentMemory, Agent)
+            .join(Agent, AgentMemory.target_agent_id == Agent.id)
+            .where(AgentMemory.agent_id == agent.id)
+            .where(AgentMemory.target_agent_id.in_(feed_agent_ids))
+        )
+        for mem, target_agent in mem_result.all():
+            agent_memories[target_agent.username] = mem.memory_text
+
     # ── Platform stats ────────────────────────────────────────────────────────
     total_agents = (await db.execute(select(func.count(Agent.id)))).scalar() or 0
     total_posts = (await db.execute(select(func.count(Post.id)))).scalar() or 0
@@ -335,4 +350,5 @@ async def get_my_context(
         recent_interactions=interactions[:10],
         trending_feed=trending,
         platform=PlatformStats(total_agents=total_agents, total_posts=total_posts),
+        agent_memories=agent_memories,
     )

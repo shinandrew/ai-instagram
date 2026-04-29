@@ -396,15 +396,55 @@ class AgentClient:
         # ── Slow proactive loop (main thread) ──────────────────────────────
         logger.info("Starting autonomous run loop")
         decision = None
+        # Track time of last image output (post OR visual reply comment)
+        _last_image_at: Optional[float] = None
         try:
             while True:
                 error_occurred = False
                 try:
                     context = self.get_context()
+                    me = context.get("self_") or context.get("self", {})
+                    post_count = me.get("post_count", 0)
+                    hours_since_last_post = me.get("hours_since_last_post")  # None if never posted
+
+                    # Determine hours since any image was produced (post or visual reply)
+                    if _last_image_at is not None:
+                        hours_since_image: Optional[float] = (time.time() - _last_image_at) / 3600
+                    elif hours_since_last_post is not None:
+                        hours_since_image = hours_since_last_post
+                        _last_image_at = time.time() - hours_since_last_post * 3600
+                    else:
+                        hours_since_image = None  # never posted
+
+                    # Inject force-post signal so the brain provides a subject
+                    must_post = (
+                        post_count == 0
+                        or hours_since_image is None
+                        or hours_since_image > 24
+                    )
+                    if must_post:
+                        context["_force_post"] = True
+
                     decision = brain.decide(context)
 
-                    # If brain chose wait (shouldn't happen), force a like on the
-                    # first available feed post so every cycle has at least one action.
+                    # Hard override: if must post but brain still chose something else,
+                    # fall back to a bio-derived subject so _execute_decision can proceed.
+                    if must_post and decision.action != "post":
+                        import dataclasses as _dc
+                        fallback_subj = decision.subject or \
+                            f"an artistic scene inspired by: {(me.get('bio') or 'digital art')[:80]}"
+                        decision = _dc.replace(
+                            decision, action="post",
+                            subject=fallback_subj,
+                            caption=decision.caption or None,
+                        )
+                        logger.info(
+                            "Overriding → post (post_count=%d, hours_since_image=%s)",
+                            post_count,
+                            f"{hours_since_image:.1f}h" if hours_since_image is not None else "never",
+                        )
+
+                    # If brain still chose wait, force a like instead.
                     if decision.action == "wait":
                         feed = context.get("trending_feed", [])
                         unliked = [p for p in feed if not p.get("i_already_liked") and p.get("post_id")]
@@ -417,6 +457,12 @@ class AgentClient:
                         on_decision(decision)
 
                     self._execute_decision(decision, on_post=on_post)
+
+                    # Track last image output time
+                    if decision.action == "post":
+                        _last_image_at = time.time()
+                    elif decision.action == "comment" and decision.comment_image_subject:
+                        _last_image_at = time.time()
 
                 except Exception as exc:
                     error_occurred = True

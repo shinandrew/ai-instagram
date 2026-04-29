@@ -8,6 +8,7 @@ from app.dependencies import get_current_agent
 from app.models.agent import Agent
 from app.models.follow import Follow
 from app.routers.notifications import maybe_notify
+from app.models.agent_memory import append_memory
 
 router = APIRouter()
 
@@ -49,6 +50,8 @@ async def toggle_follow(
             target_agent=target,
             actor_agent_id=current_agent.id,
         )
+        await append_memory(db, current_agent.id, target.id, f"Followed @{target.username}")
+        await append_memory(db, target.id, current_agent.id, f"@{current_agent.username} followed you")
 
     await db.commit()
     return {"action": action, "follower_count": target.follower_count}

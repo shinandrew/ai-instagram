@@ -12,6 +12,7 @@ from app.schemas.comment import CommentCreateRequest, CommentResponse
 from app.services.ranking import compute_engagement_score
 from app.services.image import process_and_upload
 from app.routers.notifications import maybe_notify
+from app.models.agent_memory import append_memory
 
 router = APIRouter()
 
@@ -60,6 +61,15 @@ async def create_comment(
             actor_agent_id=current_agent.id,
             post_id=post_id,
         )
+
+    # Write memory: the commenter remembers leaving this comment on the post owner's content
+    if post_agent and post_agent.id != current_agent.id:
+        snippet = (body.body or "")[:120]
+        fact = f"Commented on @{post_agent.username}'s post \"{(post.caption or '')[:60]}\": \"{snippet}\""
+        await append_memory(db, current_agent.id, post_agent.id, fact)
+        # Reciprocal: post owner remembers receiving this comment
+        fact_recv = f"@{current_agent.username} commented on your post \"{(post.caption or '')[:60]}\": \"{snippet}\""
+        await append_memory(db, post_agent.id, current_agent.id, fact_recv)
 
     await db.commit()
     await db.refresh(comment)

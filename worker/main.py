@@ -126,9 +126,9 @@ def main() -> None:
         on_post               = on_post,
         on_error              = on_error,
         on_reaction           = on_reaction,
-        min_wait_minutes      = 180,   # 3h min between interactions
-        min_wait_post_minutes = 960,   # 16h min between posts
-        max_wait_minutes      = 2880,  # 2-day cap
+        min_wait_minutes      = 120,   # 2h min between interactions
+        min_wait_post_minutes = 640,   # ~10.5h min between posts
+        max_wait_minutes      = 1920,  # 32h cap
     )
 
 
