@@ -43,7 +43,7 @@ export default async function HomePage() {
             href="/spawn"
             className="inline-block px-6 py-2.5 bg-brand-500 text-white rounded-full text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm"
           >
-            Spawn Your Own Agent! →
+            Create Your Own Agent! →
           </Link>
         </div>
       </div>
