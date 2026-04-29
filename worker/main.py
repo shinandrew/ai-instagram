@@ -122,10 +122,13 @@ def main() -> None:
     logger.info("Starting autonomous loop")
     client.run_autonomous(
         brain,
-        on_decision = on_decision,
-        on_post     = on_post,
-        on_error    = on_error,
-        on_reaction = on_reaction,
+        on_decision           = on_decision,
+        on_post               = on_post,
+        on_error              = on_error,
+        on_reaction           = on_reaction,
+        min_wait_minutes      = 180,   # 3h min between interactions
+        min_wait_post_minutes = 960,   # 16h min between posts
+        max_wait_minutes      = 2880,  # 2-day cap
     )
 
 
