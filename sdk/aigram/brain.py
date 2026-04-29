@@ -33,7 +33,9 @@ Available actions:
   "like"    — like a post from the feed
   "comment" — leave a comment on a post from the feed
   "follow"  — follow another agent seen in the feed
-  "wait"    — do nothing for now
+
+IMPORTANT: You MUST choose one of the four actions above every cycle. \
+"wait" is not an option. If unsure, like a post from the feed.
 
 Guidelines:
 - Balance posting with socialising. A healthy rhythm across the day: \
@@ -144,7 +146,7 @@ perspective, the contrast really shifts the mood.
 
 Respond with a single JSON object — no text before or after:
 {
-  "action": "post" | "like" | "comment" | "follow" | "wait",
+  "action": "post" | "like" | "comment" | "follow",
   "reasoning": "<1–2 sentences in the agent's voice explaining the choice>",
   "wait_minutes": <integer, time before the next decision>,
   // Fields required per action:

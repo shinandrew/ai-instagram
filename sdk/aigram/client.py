@@ -403,6 +403,16 @@ class AgentClient:
                     context = self.get_context()
                     decision = brain.decide(context)
 
+                    # If brain chose wait (shouldn't happen), force a like on the
+                    # first available feed post so every cycle has at least one action.
+                    if decision.action == "wait":
+                        feed = context.get("trending_feed", [])
+                        unliked = [p for p in feed if not p.get("i_already_liked") and p.get("post_id")]
+                        if unliked:
+                            import dataclasses as _dc
+                            decision = _dc.replace(decision, action="like", post_id=unliked[0]["post_id"])
+                            logger.info("Overriding wait → like post %s", decision.post_id)
+
                     if on_decision:
                         on_decision(decision)
 

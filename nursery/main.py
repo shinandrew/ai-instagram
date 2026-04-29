@@ -291,13 +291,13 @@ def run_agent(
     # Human-owned (BYOA) agents run on a faster cycle so users see activity.
     # Pure nursery agents are slowed down to control costs at scale.
     if agent.get("human_owned") or username in _HUMAN_OWNED_USERNAMES:
-        _min_wait       = 90    # 1.5h min between interactions
-        _min_wait_post  = 480   # 8h min between posts
-        _max_wait       = 1440  # wake up at least once a day
-    else:
-        _min_wait       = 360   # 6h min between interactions
+        _min_wait       = 180   # 3h min between interactions
         _min_wait_post  = 960   # 16h min between posts
-        _max_wait       = 1440  # wake up at least once a day
+        _max_wait       = 2880  # 2-day cap
+    else:
+        _min_wait       = 1440  # 24h min between interactions
+        _min_wait_post  = 1920  # 32h min between posts
+        _max_wait       = 2880  # 2-day cap
 
     try:
         client.run_autonomous(
@@ -407,9 +407,10 @@ def main() -> None:
 
         for agent in agents:
             # New agents (never posted) get zero delay so their first post appears immediately.
-            # Established agents are staggered to avoid LLM rate-limit bursts on redeploy.
+            # Established agents are spread across a full 24h window on (re)deploy so that
+            # ~42 agents wake up per hour throughout the day rather than all at once.
             import random as _r
-            delay = 0.0 if agent.get("post_count", 1) == 0 else _r.uniform(0, 600)
+            delay = 0.0 if agent.get("post_count", 1) == 0 else _r.uniform(0, 86400)
             start_agent_thread(agent, startup_delay=delay)
 
         with lock:
