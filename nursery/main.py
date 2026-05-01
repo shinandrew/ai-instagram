@@ -241,8 +241,8 @@ def _run_and_reschedule(agent_id: str) -> None:
     _schedule(agent_id, wait_secs)
 
 
-def _scheduler_loop(executor: ThreadPoolExecutor) -> None:
-    """Single thread: pops due agents from heap, submits them to the pool."""
+def _scheduler_loop(step_executor: ThreadPoolExecutor) -> None:
+    """Single thread: pops due agents from heap, submits them to the step pool."""
     while True:
         now = time.time()
         due: list[str] = []
@@ -251,7 +251,7 @@ def _scheduler_loop(executor: ThreadPoolExecutor) -> None:
                 _, _, agent_id = heapq.heappop(_heap)
                 due.append(agent_id)
         for agent_id in due:
-            executor.submit(_run_and_reschedule, agent_id)
+            step_executor.submit(_run_and_reschedule, agent_id)
         time.sleep(1)
 
 
@@ -400,12 +400,13 @@ def _setup_agent(
 def _register_agent(
     agent: dict,
     startup_delay: float,
-    executor: ThreadPoolExecutor,
+    setup_executor: ThreadPoolExecutor,
     agent_kwargs: dict,
 ) -> None:
     """
-    Mark agent as in-progress, submit setup to the pool, then schedule its
-    first step after setup completes + startup_delay.
+    Mark agent as in-progress, submit setup to the dedicated setup pool
+    (separate from the step pool so new-agent first posts are never blocked
+    by regular cycle work), then schedule regular steps after startup_delay.
     """
     agent_id = agent["agent_id"]
     with _registry_lock:
@@ -418,7 +419,7 @@ def _register_agent(
         _schedule(agent_id, startup_delay)
         logger.info("@%s ready — first step in %.0fs", agent["username"], startup_delay)
 
-    executor.submit(setup_and_schedule)
+    setup_executor.submit(setup_and_schedule)
 
 
 def main() -> None:
@@ -476,14 +477,19 @@ def main() -> None:
         brain_base_url      = brain_base_url,
     )
 
-    executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="agent")
+    # Two separate pools:
+    #   setup_executor  — dedicated to new-agent onboarding (DALL-E first post).
+    #                     Small, isolated so regular cycle work never blocks it.
+    #   step_executor   — runs regular proactive decision cycles for all agents.
+    setup_executor = ThreadPoolExecutor(max_workers=10,         thread_name_prefix="setup")
+    step_executor  = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="agent")
 
     # Start scheduler thread
     t_sched = threading.Thread(
-        target=_scheduler_loop, args=(executor,), daemon=True, name="scheduler"
+        target=_scheduler_loop, args=(step_executor,), daemon=True, name="scheduler"
     )
     t_sched.start()
-    logger.info("Scheduler started (pool size: %d)", max_workers)
+    logger.info("Scheduler started (step pool=%d, setup pool=10)", max_workers)
 
     # Fast loop: pick up newly spawned agents within fast_interval seconds
     def fast_check_loop() -> None:
@@ -496,7 +502,7 @@ def main() -> None:
             for agent in new_agents:
                 delay = 0.0 if agent.get("post_count", 0) == 0 else _r.uniform(0, 300)
                 logger.info("Fast pick-up: @%s (delay %.0fs)", agent["username"], delay)
-                _register_agent(agent, delay, executor, agent_kwargs)
+                _register_agent(agent, delay, setup_executor, agent_kwargs)
 
     t_fast = threading.Thread(target=fast_check_loop, daemon=True, name="fast-check")
     t_fast.start()
@@ -513,7 +519,7 @@ def main() -> None:
         for agent in agents:
             if agent["agent_id"] not in known:
                 delay = 0.0 if agent.get("post_count", 0) == 0 else _r.uniform(0, 86400)
-                _register_agent(agent, delay, executor, agent_kwargs)
+                _register_agent(agent, delay, setup_executor, agent_kwargs)
 
         with _registry_lock:
             n_registered = len(_clients)
@@ -522,7 +528,7 @@ def main() -> None:
             n_scheduled = len(_heap)
 
         logger.info(
-            "Status: %d registered (%d setting up), %d scheduled, pool=%d workers",
+            "Status: %d registered (%d setting up), %d scheduled, step_pool=%d",
             n_registered, n_setting_up, n_scheduled, max_workers,
         )
 
