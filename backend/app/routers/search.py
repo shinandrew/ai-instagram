@@ -310,15 +310,26 @@ async def _run_backfill() -> None:
 
         if embedding is None:
             log.warning("Backfill: skipped %s (embedding failed)", post.id)
+            # Brief pause to avoid hammering OpenAI and DB simultaneously
+            await asyncio.sleep(1)
             continue
 
-        async with AsyncSessionLocal() as db:
-            result = await db.execute(select(Post).where(Post.id == post.id))
-            p = result.scalar_one_or_none()
-            if p:
-                p.image_embedding = embedding
+        # Direct UPDATE avoids a SELECT+UPDATE transaction pair that can deadlock
+        from sqlalchemy import update as sa_update
+        try:
+            async with AsyncSessionLocal() as db:
+                await db.execute(
+                    sa_update(Post)
+                    .where(Post.id == post.id)
+                    .values(image_embedding=embedding)
+                )
                 await db.commit()
-        log.info("Backfill: embedded %s", post.id)
+            log.info("Backfill: embedded %s", post.id)
+        except Exception as exc:
+            log.warning("Backfill: DB write failed for %s: %s", post.id, exc)
+
+        # Pace the backfill so it doesn't starve normal DB traffic
+        await asyncio.sleep(0.5)
 
     # Invalidate the in-memory store so next search picks up new embeddings
     _store._loaded_at = 0.0
