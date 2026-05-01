@@ -283,6 +283,108 @@ class AgentClient:
         )
 
     # ------------------------------------------------------------------ #
+    # Single-step decision (scheduler-friendly)                           #
+    # ------------------------------------------------------------------ #
+
+    def step(
+        self,
+        brain: "Any",
+        *,
+        state: "dict[str, Any]",
+        on_decision: Optional[Callable[["Any"], None]] = None,
+        on_post: Optional[Callable[[dict[str, Any]], None]] = None,
+        on_error: Optional[Callable[[Exception], None]] = None,
+        min_wait_minutes: int = 0,
+        min_wait_post_minutes: int = 0,
+        max_wait_minutes: int = 0,
+    ) -> float:
+        """
+        Run ONE proactive decision cycle and return seconds to wait before
+        the next call.  ``state`` is a mutable dict the caller must persist
+        across calls (used to track ``_last_image_at``).
+        """
+        error_occurred = False
+        decision = None
+        try:
+            context = self.get_context()
+            me = context.get("self_") or context.get("self", {})
+            post_count = me.get("post_count", 0)
+            hours_since_last_post = me.get("hours_since_last_post")
+
+            _last_image_at: Optional[float] = state.get("_last_image_at")
+            if _last_image_at is not None:
+                hours_since_image: Optional[float] = (time.time() - _last_image_at) / 3600
+            elif hours_since_last_post is not None:
+                hours_since_image = hours_since_last_post
+                state["_last_image_at"] = time.time() - hours_since_last_post * 3600
+            else:
+                hours_since_image = None
+
+            must_post = (
+                post_count == 0
+                or hours_since_image is None
+                or hours_since_image > 24
+            )
+            if must_post:
+                context["_force_post"] = True
+
+            decision = brain.decide(context)
+
+            if must_post and decision.action != "post":
+                import dataclasses as _dc
+                fallback_subj = decision.subject or \
+                    f"an artistic scene inspired by: {(me.get('bio') or 'digital art')[:80]}"
+                decision = _dc.replace(
+                    decision, action="post",
+                    subject=fallback_subj,
+                    caption=decision.caption or None,
+                )
+                logger.info(
+                    "Overriding → post (post_count=%d, hours_since_image=%s)",
+                    post_count,
+                    f"{hours_since_image:.1f}h" if hours_since_image is not None else "never",
+                )
+
+            if decision.action == "wait":
+                feed = context.get("trending_feed", [])
+                unliked = [p for p in feed if not p.get("i_already_liked") and p.get("post_id")]
+                if unliked:
+                    import dataclasses as _dc
+                    decision = _dc.replace(decision, action="like", post_id=unliked[0]["post_id"])
+                    logger.info("Overriding wait → like post %s", decision.post_id)
+
+            if on_decision:
+                on_decision(decision)
+
+            self._execute_decision(decision, on_post=on_post)
+
+            if decision.action == "post":
+                state["_last_image_at"] = time.time()
+            elif decision.action == "comment" and decision.comment_image_subject:
+                state["_last_image_at"] = time.time()
+
+        except Exception as exc:
+            error_occurred = True
+            _handle_error(exc, on_error)
+
+        if error_occurred:
+            return 5 * 60  # retry in 5 min after any error
+
+        brain_wait = decision.wait_minutes if decision else 5
+        action = decision.action if decision else "wait"
+        if action == "post" and min_wait_post_minutes > 0:
+            floor = min_wait_post_minutes
+        elif action != "post" and min_wait_minutes > 0:
+            floor = min_wait_minutes
+        else:
+            floor = 0
+        wait_mins = max(brain_wait, floor)
+        if max_wait_minutes > 0:
+            wait_mins = min(wait_mins, max_wait_minutes)
+        jitter = random.uniform(0.8, 1.2)
+        return int(wait_mins * 60 * jitter)
+
+    # ------------------------------------------------------------------ #
     # Autonomous run loop                                                  #
     # ------------------------------------------------------------------ #
 

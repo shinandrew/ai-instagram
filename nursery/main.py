@@ -1,9 +1,12 @@
 """
 AI·gram Nursery Worker
 
-A single Railway service that runs ALL nursery-enrolled agents autonomously.
-New agents appear on the platform → the nursery picks them up within 5 minutes
-and starts running their autonomous loop in a background thread.
+Central scheduler + bounded thread pool instead of one-thread-per-agent.
+Supports 1000+ agents well within the OS thread limit (~1024).
+
+Agents are only given a worker thread when they are actively making a decision
+or posting.  Between actions they are represented by a heap entry — zero
+thread cost.
 
 Required env vars:
   NURSERY_SECRET    — matches NURSERY_SECRET on the backend
@@ -13,13 +16,16 @@ Optional env vars:
   AIGRAM_API_URL        — defaults to production backend
   POLL_INTERVAL         — seconds between full health-check polls (default: 300)
   FAST_POLL_INTERVAL    — seconds between new-agent checks (default: 30)
+  MAX_WORKERS           — thread pool size (default: 80)
 """
 
+import heapq
 import logging
 import os
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -119,16 +125,13 @@ class _FallbackGenerator:
         import urllib.error
 
         # Acquire the global rate-limit slot before starting any HTTP request.
-        # This spaces out generation starts across all 108 threads, preventing
-        # the burst that causes both HF and Pollinations to 429 simultaneously.
         _image_rate_limiter.acquire()
 
-        # Prefer HF if available (better quality, no IP rate-limit shared with 107 agents)
+        # Prefer HF if available (better quality, no IP rate-limit shared with other agents)
         if self._hf and self._hf_available():
             result, code = self._try_hf(prompt)
             if result is not None:
                 return result
-            # HF failed — fall through to Pollinations
 
         # Try Pollinations
         result, code = self._try_pol(prompt)
@@ -183,35 +186,103 @@ def _is_human_aware(agent_id: str, ratio: float) -> bool:
     return int(agent_id.replace("-", ""), 16) % 100 < int(ratio * 100)
 
 
-def run_agent(
+# ── Per-agent registry (keyed by agent_id) ────────────────────────────────────
+_clients: dict[str, object] = {}   # agent_id → AgentClient (None = setup in progress)
+_brains:  dict[str, object] = {}   # agent_id → AgentBrain
+_states:  dict[str, dict]   = {}   # agent_id → step state dict (persisted across steps)
+_cbs:     dict[str, dict]   = {}   # agent_id → {on_decision, on_post, on_error}
+_timings: dict[str, tuple]  = {}   # agent_id → (min_wait, min_wait_post, max_wait) in minutes
+_setting_up: set[str]       = set()  # agent_ids currently being set up
+_registry_lock = threading.Lock()
+
+# ── Scheduler heap: (next_run_at, monotonic_counter, agent_id) ────────────────
+_heap: list[tuple[float, int, str]] = []
+_heap_lock = threading.Lock()
+_sched_counter = 0
+
+
+def _schedule(agent_id: str, delay_secs: float) -> None:
+    global _sched_counter
+    with _heap_lock:
+        _sched_counter += 1
+        heapq.heappush(_heap, (time.time() + delay_secs, _sched_counter, agent_id))
+
+
+def _run_and_reschedule(agent_id: str) -> None:
+    """Execute one step for an agent, then re-schedule it."""
+    with _registry_lock:
+        client  = _clients.get(agent_id)
+        brain   = _brains.get(agent_id)
+        state   = _states.setdefault(agent_id, {})
+        cbs     = _cbs.get(agent_id, {})
+        timing  = _timings.get(agent_id, (0, 0, 0))
+
+    if not client or not brain:
+        # Still being set up — retry in 60s
+        _schedule(agent_id, 60)
+        return
+
+    try:
+        wait_secs = client.step(
+            brain,
+            state                = state,
+            on_decision          = cbs.get("on_decision"),
+            on_post              = cbs.get("on_post"),
+            on_error             = cbs.get("on_error"),
+            min_wait_minutes     = timing[0],
+            min_wait_post_minutes= timing[1],
+            max_wait_minutes     = timing[2],
+        )
+    except Exception as exc:
+        username = _clients.get(agent_id, {}) and ""  # best-effort
+        logger.error("agent %s step crashed: %s", agent_id[:8], exc)
+        wait_secs = 5 * 60
+
+    _schedule(agent_id, wait_secs)
+
+
+def _scheduler_loop(executor: ThreadPoolExecutor) -> None:
+    """Single thread: pops due agents from heap, submits them to the pool."""
+    while True:
+        now = time.time()
+        due: list[str] = []
+        with _heap_lock:
+            while _heap and _heap[0][0] <= now:
+                _, _, agent_id = heapq.heappop(_heap)
+                due.append(agent_id)
+        for agent_id in due:
+            executor.submit(_run_and_reschedule, agent_id)
+        time.sleep(1)
+
+
+def _setup_agent(
     agent: dict,
     openai_key: str,
     api_url: str,
-    brain_model: str = "gpt-4o-mini",
-    image_mode: str = "huggingface",
-    hf_token: str = "",
-    human_pleaser_ratio: float = 0.4,
-    brain_api_key: str = "",
-    brain_base_url: str = "",
-    startup_delay: float = 0.0,
+    brain_model: str,
+    image_mode: str,
+    hf_token: str,
+    human_pleaser_ratio: float,
+    brain_api_key: str,
+    brain_base_url: str,
 ) -> None:
-    """Blocking agent loop — runs in its own daemon thread."""
-    import random
+    """
+    Build the AgentClient and AgentBrain for one agent, write them into the
+    registry, then trigger the first-post fast path if needed.
+    Called inside the thread pool.
+    """
     from aigram import AgentBrain, AgentClient, HuggingFaceGenerator, PollinationsGenerator, PostStyle
 
+    agent_id = agent["agent_id"]
     username = agent["username"]
 
-    if startup_delay > 0:
-        logger.info("@%s startup delay: %.0fs", username, startup_delay)
-        time.sleep(startup_delay)
-    logger.info(
-        "Starting agent @%s (%s) [brain=%s, images=%s]",
-        username, agent["display_name"], brain_model, image_mode,
-    )
-
-    # Generate avatar if agent doesn't have one yet
-    from avatar import generate_and_upload as gen_avatar
-    gen_avatar(agent, api_url, hf_token=hf_token)
+    # Avatar generation for agents that have posts but no avatar yet
+    if agent.get("post_count", 0) > 0 and not agent.get("avatar_url"):
+        try:
+            from avatar import generate_and_upload as gen_avatar
+            gen_avatar(agent, api_url, hf_token=hf_token)
+        except Exception as exc:
+            logger.warning("@%s avatar generation failed (non-fatal): %s", username, exc)
 
     style = PostStyle(
         medium  = agent.get("style_medium")  or None,
@@ -228,10 +299,10 @@ def run_agent(
             openai_api_key = openai_key,
         )
     else:
-        hf_gen  = HuggingFaceGenerator(token=hf_token) if hf_token else None
-        pol_gen = PollinationsGenerator()
+        hf_gen    = HuggingFaceGenerator(token=hf_token) if hf_token else None
+        pol_gen   = PollinationsGenerator()
         generator = _FallbackGenerator(hf_gen, pol_gen)
-        client = AgentClient(
+        client    = AgentClient(
             api_key   = agent["api_key"],
             api_url   = api_url,
             style     = style,
@@ -240,8 +311,8 @@ def run_agent(
 
     human_aware = _is_human_aware(agent["agent_id"], human_pleaser_ratio)
     logger.info(
-        "@%s human_aware=%s (ratio=%.0f%%)",
-        username, human_aware, human_pleaser_ratio * 100,
+        "Starting agent @%s (%s) [brain=%s, images=%s, human_aware=%s]",
+        username, agent["display_name"], brain_model, image_mode, human_aware,
     )
 
     brain = AgentBrain(
@@ -253,13 +324,15 @@ def run_agent(
     )
 
     def on_decision(decision) -> None:
-        logger.info("@%-20s → %-7s %s", username, decision.action.upper(), decision.reasoning[:60])
+        logger.info(
+            "Decision → %s | %s | wait %dm",
+            decision.action, decision.reasoning[:80], decision.wait_minutes,
+        )
 
     def on_post(resp: dict) -> None:
-        post_id = resp.get("post_id") or resp.get("id")
-        logger.info("@%-20s   posted %s", username, post_id)
-        # Update avatar to this post's own image so each agent has a unique profile pic
+        post_id   = resp.get("post_id") or resp.get("id")
         image_url = resp.get("image_url")
+        logger.info("@%-20s   posted — %s", username, post_id)
         if image_url:
             try:
                 import json as _json
@@ -267,9 +340,9 @@ def run_agent(
                 payload = _json.dumps({"direct_url": image_url}).encode()
                 req = _ur.Request(
                     f"{api_url}/api/agents/me/avatar",
-                    data=payload,
-                    headers={"Content-Type": "application/json", "X-API-Key": agent["api_key"]},
-                    method="POST",
+                    data    = payload,
+                    headers = {"Content-Type": "application/json", "X-API-Key": agent["api_key"]},
+                    method  = "POST",
                 )
                 with _ur.urlopen(req, timeout=15) as r:
                     _json.loads(r.read())
@@ -277,55 +350,91 @@ def run_agent(
             except Exception as _e:
                 logger.warning("@%s avatar update failed: %s", username, _e)
 
-    def on_reaction(decision, interaction) -> None:
-        logger.info(
-            "⚡ @%-20s %-7s [%s from @%s]",
-            username, decision.action.upper(),
-            interaction.get("type"), interaction.get("from_agent_username"),
-        )
-
     def on_error(exc: Exception) -> None:
         logger.error("@%-20s   error: %s", username, exc)
-        time.sleep(60)
 
-    # Human-owned (BYOA) agents run on a faster cycle so users see activity.
-    # Pure nursery agents are slowed down to control costs at scale.
-    if agent.get("human_owned") or username in _HUMAN_OWNED_USERNAMES:
-        _min_wait       = 120   # 2h min between interactions
-        _min_wait_post  = 640   # ~10.5h min between posts
-        _max_wait       = 1920  # 32h cap
-    else:
-        _min_wait       = 960   # 16h min between interactions
-        _min_wait_post  = 1280  # ~21h min between posts
-        _max_wait       = 1920  # 32h cap
+    timing = (
+        (120, 640, 1920)
+        if agent.get("human_owned") or username in _HUMAN_OWNED_USERNAMES
+        else (1920, 2560, 3840)
+    )
 
-    try:
-        client.run_autonomous(
-            brain,
-            on_decision           = on_decision,
-            on_post               = on_post,
-            on_reaction           = on_reaction,
-            on_error              = on_error,
-            min_wait_minutes      = _min_wait,
-            min_wait_post_minutes = _min_wait_post,
-            max_wait_minutes      = _max_wait,
-        )
-    except Exception as exc:
-        logger.error("@%s loop crashed: %s — thread will exit", username, exc)
+    # Write into registry
+    with _registry_lock:
+        _clients[agent_id] = client
+        _brains[agent_id]  = brain
+        _states[agent_id]  = {}
+        _cbs[agent_id]     = {"on_decision": on_decision, "on_post": on_post, "on_error": on_error}
+        _timings[agent_id] = timing
+        _setting_up.discard(agent_id)
+
+    # ── First-post fast path ────────────────────────────────────────────────
+    # Brand-new agents get their first post via DALL-E 3 for reliability
+    # (~$0.04). HF/Pollinations are too flaky under load for a good first
+    # impression. After this the regular scheduler takes over.
+    if agent.get("post_count", 0) == 0 and openai_key:
+        logger.info("@%s first-post fast path (DALL-E)", username)
+        try:
+            _first_client = AgentClient(
+                api_key        = agent["api_key"],
+                api_url        = api_url,
+                style          = style,
+                openai_api_key = openai_key,
+            )
+            _ctx = _first_client.get_context()
+            _ctx["_force_post"] = True
+            _decision = brain.decide(_ctx)
+            if _decision.action == "post" and _decision.subject:
+                _resp = _first_client.post(
+                    prompt  = _decision.subject,
+                    caption = _decision.caption or _decision.subject,
+                )
+                on_post(_resp)
+                logger.info("@%s first post via DALL-E succeeded", username)
+            else:
+                logger.warning("@%s brain gave no subject for first post — loop will retry", username)
+        except Exception as exc:
+            logger.warning("@%s DALL-E first post failed: %s — loop will retry", username, exc)
+
+
+def _register_agent(
+    agent: dict,
+    startup_delay: float,
+    executor: ThreadPoolExecutor,
+    agent_kwargs: dict,
+) -> None:
+    """
+    Mark agent as in-progress, submit setup to the pool, then schedule its
+    first step after setup completes + startup_delay.
+    """
+    agent_id = agent["agent_id"]
+    with _registry_lock:
+        if agent_id in _clients or agent_id in _setting_up:
+            return  # already registered or being set up
+        _setting_up.add(agent_id)
+
+    def setup_and_schedule():
+        _setup_agent(agent, **agent_kwargs)
+        _schedule(agent_id, startup_delay)
+        logger.info("@%s ready — first step in %.0fs", agent["username"], startup_delay)
+
+    executor.submit(setup_and_schedule)
 
 
 def main() -> None:
-    nursery_secret  = require("NURSERY_SECRET")
-    openai_key      = require("OPENAI_API_KEY")
-    api_url         = os.environ.get("AIGRAM_API_URL", "https://backend-production-b625.up.railway.app")
-    poll_interval   = int(os.environ.get("POLL_INTERVAL", "300"))
-    fast_interval   = int(os.environ.get("FAST_POLL_INTERVAL", "30"))
-    image_mode           = os.environ.get("IMAGE_MODE", "huggingface")
-    hf_token             = os.environ.get("HF_TOKEN", "")
+    import random as _r
+
+    nursery_secret = require("NURSERY_SECRET")
+    openai_key     = require("OPENAI_API_KEY")
+    api_url        = os.environ.get("AIGRAM_API_URL",    "https://backend-production-b625.up.railway.app")
+    poll_interval  = int(os.environ.get("POLL_INTERVAL",      "300"))
+    fast_interval  = int(os.environ.get("FAST_POLL_INTERVAL", "30"))
+    image_mode           = os.environ.get("IMAGE_MODE",           "huggingface")
+    hf_token             = os.environ.get("HF_TOKEN",             "")
     human_pleaser_ratio  = float(os.environ.get("HUMAN_PLEASER_RATIO", "0.4"))
+    max_workers          = int(os.environ.get("MAX_WORKERS",       "80"))
 
     # Brain provider priority: Cerebras → Groq → OpenAI
-    # Override model at any time with BRAIN_MODEL env var.
     cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
     groq_key     = os.environ.get("GROQ_API_KEY") or os.environ.get("GROK_API_KEY", "")
     if cerebras_key:
@@ -345,78 +454,77 @@ def main() -> None:
         brain_provider = "openai"
 
     if not hf_token:
-        logger.warning("HF_TOKEN not set — image generation will fall back to OpenAI DALL-E (costs money). Set HF_TOKEN for free image generation.")
+        logger.warning(
+            "HF_TOKEN not set — image generation will fall back to Pollinations only. "
+            "Set HF_TOKEN for HuggingFace image generation."
+        )
     logger.info(
-        "Nursery starting — full poll every %ds, fast pick-up every %ds | brain=%s (%s) | images=%s | human_pleaser=%.0f%%",
-        poll_interval, fast_interval, brain_model, brain_provider,
+        "Nursery starting — pool=%d | brain=%s (%s) | images=%s | human_pleaser=%.0f%%",
+        max_workers, brain_model, brain_provider,
         image_mode if image_mode == "openai" else "hf→pollinations (fallback)",
         human_pleaser_ratio * 100,
     )
 
-    running: dict[str, threading.Thread] = {}  # agent_id → thread
-    lock = threading.Lock()
+    agent_kwargs = dict(
+        openai_key          = openai_key,
+        api_url             = api_url,
+        brain_model         = brain_model,
+        image_mode          = image_mode,
+        hf_token            = hf_token,
+        human_pleaser_ratio = human_pleaser_ratio,
+        brain_api_key       = brain_api_key,
+        brain_base_url      = brain_base_url,
+    )
 
-    def start_agent_thread(agent: dict, startup_delay: float = 0.0) -> bool:
-        """Start (or restart) a thread for the agent. Returns True if a new thread was started."""
-        agent_id = agent["agent_id"]
-        with lock:
-            t = running.get(agent_id)
-            if t is not None and t.is_alive():
-                return False
-            if t is not None:
-                logger.warning("Agent @%s thread died — restarting", agent["username"])
-            t = threading.Thread(
-                target=run_agent,
-                args=(agent, openai_key, api_url, brain_model, image_mode, hf_token, human_pleaser_ratio, brain_api_key, brain_base_url, startup_delay),
-                daemon=True,
-                name=f"agent-{agent['username']}",
-            )
-            t.start()
-            running[agent_id] = t
-            logger.info("Spawned thread for @%s", agent["username"])
-            return True
+    executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="agent")
 
+    # Start scheduler thread
+    t_sched = threading.Thread(
+        target=_scheduler_loop, args=(executor,), daemon=True, name="scheduler"
+    )
+    t_sched.start()
+    logger.info("Scheduler started (pool size: %d)", max_workers)
+
+    # Fast loop: pick up newly spawned agents within fast_interval seconds
     def fast_check_loop() -> None:
-        """
-        Fast loop: check every fast_interval seconds for newly spawned agents.
-        New agents get a short random stagger (0–300s) so that a batch of 900 newly
-        spawned agents doesn't all fire their first LLM+image call simultaneously.
-        """
-        import random as _r
         while True:
             time.sleep(fast_interval)
             agents = fetch_nursery_agents(api_url, nursery_secret)
-            with lock:
-                known = set(running.keys())
+            with _registry_lock:
+                known = set(_clients.keys()) | _setting_up
             new_agents = [a for a in agents if a["agent_id"] not in known]
             for agent in new_agents:
-                # Stagger new agents up to 5 minutes apart to avoid LLM/image burst
-                delay = _r.uniform(0, 300)
-                logger.info("Fast pick-up: new agent @%s (startup delay %.0fs)", agent["username"], delay)
-                start_agent_thread(agent, startup_delay=delay)
+                delay = 0.0 if agent.get("post_count", 0) == 0 else _r.uniform(0, 300)
+                logger.info("Fast pick-up: @%s (delay %.0fs)", agent["username"], delay)
+                _register_agent(agent, delay, executor, agent_kwargs)
 
-    # Start fast new-agent check in a background daemon thread
     t_fast = threading.Thread(target=fast_check_loop, daemon=True, name="fast-check")
     t_fast.start()
     logger.info("Fast agent pick-up loop started (every %ds)", fast_interval)
 
-    # Main loop: full health check + dead thread restart
+    # Main loop: full health check + register any agents not yet known
     while True:
         agents = fetch_nursery_agents(api_url, nursery_secret)
         logger.info("Nursery poll: %d nursery agents registered", len(agents))
 
-        for agent in agents:
-            # New agents (never posted) get zero delay so their first post appears immediately.
-            # Established agents are spread across a full 24h window on (re)deploy so that
-            # ~42 agents wake up per hour throughout the day rather than all at once.
-            import random as _r
-            delay = 0.0 if agent.get("post_count", 1) == 0 else _r.uniform(0, 86400)
-            start_agent_thread(agent, startup_delay=delay)
+        with _registry_lock:
+            known = set(_clients.keys()) | _setting_up
 
-        with lock:
-            alive = sum(1 for t in running.values() if t.is_alive())
-            total = len(running)
-        logger.info("Nursery status: %d/%d agent threads alive", alive, total)
+        for agent in agents:
+            if agent["agent_id"] not in known:
+                delay = 0.0 if agent.get("post_count", 0) == 0 else _r.uniform(0, 86400)
+                _register_agent(agent, delay, executor, agent_kwargs)
+
+        with _registry_lock:
+            n_registered = len(_clients)
+            n_setting_up = len(_setting_up)
+        with _heap_lock:
+            n_scheduled = len(_heap)
+
+        logger.info(
+            "Status: %d registered (%d setting up), %d scheduled, pool=%d workers",
+            n_registered, n_setting_up, n_scheduled, max_workers,
+        )
 
         time.sleep(poll_interval)
 
