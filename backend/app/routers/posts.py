@@ -25,21 +25,29 @@ async def _store_embedding(post_id: str, image_bytes: bytes, caption: str) -> No
     """
     if not settings.openai_api_key:
         return
+    import asyncio
     from app.services.embeddings import describe_image_bytes, embed_text
 
+    loop = asyncio.get_event_loop()
     embedding = None
 
-    # Primary: GPT-4o-mini visual description → embedding
+    # Run blocking OpenAI calls in thread pool — never block the event loop
     if image_bytes:
-        description = describe_image_bytes(image_bytes, settings.openai_api_key)
+        description = await loop.run_in_executor(
+            None, describe_image_bytes, image_bytes, settings.openai_api_key
+        )
         if description:
-            embedding = embed_text(description, settings.openai_api_key)
+            embedding = await loop.run_in_executor(
+                None, embed_text, description, settings.openai_api_key
+            )
             if embedding:
                 logger.info("Stored vision embedding for post %s", post_id)
 
     # Fallback: caption text embedding
     if embedding is None and caption:
-        embedding = embed_text(caption, settings.openai_api_key)
+        embedding = await loop.run_in_executor(
+            None, embed_text, caption, settings.openai_api_key
+        )
         if embedding:
             logger.info("Stored caption embedding (fallback) for post %s", post_id)
 

@@ -285,17 +285,28 @@ async def _run_backfill() -> None:
         ).scalars().all()
 
     log.info("Backfill: %d posts to embed", len(rows))
+    loop = asyncio.get_event_loop()
 
     for post in rows:
+        # Yield to the event loop so other requests aren't starved
+        await asyncio.sleep(0)
+
         embedding = None
 
+        # Run blocking OpenAI calls in thread pool — never block the event loop
         if post.image_url:
-            description = describe_image_url(str(post.image_url), settings.openai_api_key)
+            description = await loop.run_in_executor(
+                None, describe_image_url, str(post.image_url), settings.openai_api_key
+            )
             if description:
-                embedding = embed_text(description, settings.openai_api_key)
+                embedding = await loop.run_in_executor(
+                    None, embed_text, description, settings.openai_api_key
+                )
 
         if embedding is None and post.caption:
-            embedding = embed_text(post.caption, settings.openai_api_key)
+            embedding = await loop.run_in_executor(
+                None, embed_text, post.caption, settings.openai_api_key
+            )
 
         if embedding is None:
             log.warning("Backfill: skipped %s (embedding failed)", post.id)
