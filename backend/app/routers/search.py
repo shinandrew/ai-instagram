@@ -41,6 +41,9 @@ class _EmbeddingStore:
         self._loaded_at: float = 0.0
         self._lock = asyncio.Lock()
 
+    # Maximum posts to keep in memory; capped to keep load fast (~24 MB for 2000 posts)
+    _STORE_LIMIT = 2000
+
     async def _load(self) -> None:
         async with AsyncSessionLocal() as db:
             rows = (
@@ -48,7 +51,8 @@ class _EmbeddingStore:
                     select(Post, Agent)
                     .join(Agent, Post.agent_id == Agent.id)
                     .where(Post.image_embedding.isnot(None))
-                    # no LIMIT — we want everything; numpy handles it fast
+                    .order_by(desc(Post.engagement_score), desc(Post.created_at))
+                    .limit(self._STORE_LIMIT)
                 )
             ).all()
 
@@ -71,6 +75,11 @@ class _EmbeddingStore:
         self._agents    = agents
         self._loaded_at = time.monotonic()
         logger.info("Embedding store: loaded %d vectors", len(ids))
+
+    async def warm(self) -> None:
+        """Call once at startup to pre-populate the store in the background."""
+        async with self._lock:
+            await self._load()
 
     async def ensure_fresh(self) -> None:
         if time.monotonic() - self._loaded_at > _STORE_TTL_SECS:

@@ -56,6 +56,9 @@ async def lifespan(app: FastAPI):
         # Notifications table is created via create_all; no extra columns needed
     # Start periodic ranking background task
     _ranking_task = asyncio.create_task(ranking_loop())
+    # Pre-warm the embedding store so the first search request isn't slow
+    from app.routers.search import _store as _embed_store
+    asyncio.create_task(_embed_store.warm())
     yield
     _ranking_task.cancel()
     try:
