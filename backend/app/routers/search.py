@@ -215,7 +215,7 @@ async def _run_backfill() -> None:
     Uses caption text (not image bytes) so that backfill works without fetching
     images from R2 (which returns 403 from the backend server).
     """
-    from app.services.embeddings import embed_text
+    from app.services.embeddings import describe_image_url, embed_text
     from app.database import AsyncSessionLocal
     import logging
     log = logging.getLogger("backfill")
@@ -225,7 +225,7 @@ async def _run_backfill() -> None:
             await db.execute(
                 select(Post)
                 .where(Post.image_embedding.is_(None))
-                .where(Post.caption.isnot(None))
+                .where(Post.image_url.isnot(None))
                 .order_by(Post.created_at)
             )
         ).scalars().all()
@@ -233,12 +233,22 @@ async def _run_backfill() -> None:
     log.info("Backfill: %d posts to embed", len(rows))
 
     for post in rows:
-        if not post.caption:
-            continue
-        embedding = embed_text(post.caption, settings.openai_api_key)
+        embedding = None
+
+        # Primary: GPT-4o-mini vision describes the image (OpenAI fetches R2 URL)
+        if post.image_url:
+            description = describe_image_url(str(post.image_url), settings.openai_api_key)
+            if description:
+                embedding = embed_text(description, settings.openai_api_key)
+
+        # Fallback: caption text embedding
+        if embedding is None and post.caption:
+            embedding = embed_text(post.caption, settings.openai_api_key)
+
         if embedding is None:
             log.warning("Backfill: skipped %s (embedding failed)", post.id)
             continue
+
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Post).where(Post.id == post.id))
             p = result.scalar_one_or_none()

@@ -1,110 +1,146 @@
 """
-Embedding pipeline for semantic search.
+Embedding pipeline for semantic image search.
 
-Image embeddings: CLIP (openai/clip-vit-base-patch32) via HuggingFace Inference API.
-  - embed_image_bytes(): 512-dim, embedded in-memory at post creation time.
+All embeddings use OpenAI text-embedding-3-small (1536-dim) so every vector
+lives in the same space and cosine similarity is directly comparable.
 
-Text embeddings: OpenAI text-embedding-3-small via OpenAI API.
-  - embed_text(): 1536-dim, used for search queries and caption backfill.
+Index-time flow for new posts:
+  1. GPT-4o-mini vision describes the image visually (subjects, colors, mood, style)
+  2. That description is embedded with text-embedding-3-small
+  3. Fallback: caption text embedding if vision fails
 
-The two vector spaces are different dimensions and not directly comparable.
-cosine_similarity() returns 0.0 on dimension mismatch, so they coexist safely
-in the same DB column. Text search uses OpenAI-embedded captions; visual search
-(future) will use CLIP image embeddings.
+Backfill flow for existing posts:
+  1. Same vision → embed pipeline, passing the R2 URL directly to OpenAI
+     (OpenAI servers can fetch public R2 URLs even though our backend cannot)
+  2. Fallback: caption text embedding
+
+Search-time flow:
+  1. Query text is embedded with text-embedding-3-small
+  2. Cosine similarity against stored vectors
 """
 
+import base64
 import json
 import logging
 import math
+import time
 import urllib.request
 
 logger = logging.getLogger(__name__)
 
-CLIP_MODEL = "openai/clip-vit-base-patch32"
-_HF_BASE = "https://api-inference.huggingface.co"
-
 OPENAI_EMBED_MODEL = "text-embedding-3-small"
+OPENAI_VISION_MODEL = "gpt-4o-mini"
 _OPENAI_BASE = "https://api.openai.com/v1"
 
+_VISION_PROMPT = (
+    "Describe the visual content of this image concisely in 2-3 sentences. "
+    "Include: main subjects, colors, mood, artistic style, and setting."
+)
 
-def embed_image_bytes(image_bytes: bytes, hf_token: str) -> list[float] | None:
-    """
-    Embed raw image bytes with CLIP — no URL fetching.
-    Use this when the bytes are already in memory (e.g. right after upload).
-    Returns a 512-dim float list, or None on failure.
-    """
-    if not image_bytes or not hf_token:
-        return None
 
-    url = f"{_HF_BASE}/models/{CLIP_MODEL}"
+def _openai_post(url: str, body: dict, openai_api_key: str, timeout: int = 30) -> dict | None:
+    """POST to OpenAI API with 3-attempt retry on transient errors."""
+    encoded = json.dumps(body).encode()
     req = urllib.request.Request(
         url,
-        data=image_bytes,
+        data=encoded,
         headers={
-            "Authorization": f"Bearer {hf_token}",
-            "Content-Type": "application/octet-stream",
+            "Authorization": f"Bearer {openai_api_key}",
+            "Content-Type": "application/json",
         },
     )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read())
-        if isinstance(result, list) and result and isinstance(result[0], list):
-            return result[0]
-        if isinstance(result, list) and result and isinstance(result[0], (int, float)):
-            return result
-        logger.warning("Unexpected CLIP image response: %s", str(result)[:120])
-        return None
-    except Exception as exc:
-        logger.warning("CLIP image embedding failed: %s", exc)
-        return None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read())
+        except Exception as exc:
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+                continue
+            logger.warning("OpenAI API call to %s failed: %s", url, exc)
+            return None
 
 
-def embed_image(image_url: str, hf_token: str) -> list[float] | None:
+def describe_image_bytes(image_bytes: bytes, openai_api_key: str) -> str | None:
     """
-    Fetch the image from its URL and embed it with CLIP.
-    Prefer embed_image_bytes() when you already have the bytes in memory.
+    Use GPT-4o-mini vision to produce a rich visual description from raw bytes.
+    The description is later embedded with embed_text() for semantic search.
     """
-    if not image_url or not hf_token:
+    if not image_bytes or not openai_api_key:
         return None
-    try:
-        with urllib.request.urlopen(image_url, timeout=20) as r:
-            image_bytes = r.read()
-    except Exception as exc:
-        logger.warning("Failed to fetch image %s: %s", image_url[:80], exc)
+
+    b64 = base64.b64encode(image_bytes).decode()
+    result = _openai_post(
+        f"{_OPENAI_BASE}/chat/completions",
+        {
+            "model": OPENAI_VISION_MODEL,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/webp;base64,{b64}"}},
+                    {"type": "text", "text": _VISION_PROMPT},
+                ],
+            }],
+            "max_tokens": 150,
+        },
+        openai_api_key,
+        timeout=45,
+    )
+    if result:
+        return result["choices"][0]["message"]["content"]
+    return None
+
+
+def describe_image_url(image_url: str, openai_api_key: str) -> str | None:
+    """
+    Use GPT-4o-mini vision to produce a rich visual description from a URL.
+    OpenAI's servers fetch the URL directly — works even if our backend can't.
+    """
+    if not image_url or not openai_api_key:
         return None
-    return embed_image_bytes(image_bytes, hf_token)
+
+    result = _openai_post(
+        f"{_OPENAI_BASE}/chat/completions",
+        {
+            "model": OPENAI_VISION_MODEL,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                    {"type": "text", "text": _VISION_PROMPT},
+                ],
+            }],
+            "max_tokens": 150,
+        },
+        openai_api_key,
+        timeout=45,
+    )
+    if result:
+        return result["choices"][0]["message"]["content"]
+    return None
 
 
 def embed_text(text: str, openai_api_key: str) -> list[float] | None:
     """
     Embed text via OpenAI text-embedding-3-small.
     Returns a 1536-dim float list, or None on failure.
-    Used for search queries and caption backfill.
     """
     if not text or not openai_api_key:
         return None
 
-    body = json.dumps({"input": text, "model": OPENAI_EMBED_MODEL}).encode()
-    req = urllib.request.Request(
+    result = _openai_post(
         f"{_OPENAI_BASE}/embeddings",
-        data=body,
-        headers={
-            "Authorization": f"Bearer {openai_api_key}",
-            "Content-Type": "application/json",
-        },
+        {"input": text, "model": OPENAI_EMBED_MODEL},
+        openai_api_key,
     )
-    import time
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                result = json.loads(resp.read())
-            return result["data"][0]["embedding"]
-        except Exception as exc:
-            if attempt < 2:
-                time.sleep(2 ** attempt)  # 1s, 2s backoff
-                continue
-            logger.warning("OpenAI text embedding failed: %s", exc)
-            return None
+    if result:
+        return result["data"][0]["embedding"]
+    return None
+
+
+def embed_image_bytes(image_bytes: bytes, hf_token: str) -> list[float] | None:
+    """Legacy CLIP embedding via HuggingFace — kept for reference but HF API is broken."""
+    return None
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:

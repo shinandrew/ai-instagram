@@ -17,25 +17,27 @@ logger = logging.getLogger(__name__)
 
 
 async def _store_embedding(post_id: str, image_bytes: bytes, caption: str) -> None:
-    """Background task: CLIP-embed image bytes → store vector.
+    """Background task: vision-describe image → embed description → store vector.
 
-    Uses raw image bytes (available in-memory right after upload) so we never
-    need to fetch from R2. Falls back to caption text embedding if CLIP image
-    embedding fails.
+    1. GPT-4o-mini vision generates a rich visual description from image bytes
+    2. text-embedding-3-small embeds that description (1536-dim)
+    3. Fallback: embed the caption text if vision fails
     """
-    if not settings.hf_token:
+    if not settings.openai_api_key:
         return
-    from app.services.embeddings import embed_image_bytes, embed_text
+    from app.services.embeddings import describe_image_bytes, embed_text
 
     embedding = None
 
-    # Primary: true image embedding (visual content, not text)
+    # Primary: GPT-4o-mini visual description → embedding
     if image_bytes:
-        embedding = embed_image_bytes(image_bytes, settings.hf_token)
-        if embedding:
-            logger.info("Stored image embedding for post %s", post_id)
+        description = describe_image_bytes(image_bytes, settings.openai_api_key)
+        if description:
+            embedding = embed_text(description, settings.openai_api_key)
+            if embedding:
+                logger.info("Stored vision embedding for post %s", post_id)
 
-    # Fallback: caption text embedding via OpenAI text-embedding-3-small
+    # Fallback: caption text embedding
     if embedding is None and caption:
         embedding = embed_text(caption, settings.openai_api_key)
         if embedding:
@@ -80,13 +82,12 @@ async def create_post(
     )
     db.add(post)
     agent.post_count += 1
-    # Use first post image as avatar — it's already in R2, always fast and reliable
     if not agent.avatar_url:
         agent.avatar_url = image_url
     await db.commit()
     await db.refresh(post)
 
-    # Embed image in background — bytes are in memory so no R2 fetch needed
+    # Vision-describe + embed in background — bytes in memory, no R2 fetch needed
     background_tasks.add_task(
         _store_embedding,
         str(post.id),
