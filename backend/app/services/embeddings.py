@@ -15,50 +15,62 @@ Backfill flow for existing posts:
   2. Fallback: caption text embedding
 
 Search-time flow:
-  1. Query text is embedded with text-embedding-3-small
-  2. Cosine similarity against stored vectors
+  1. Query text is embedded with text-embedding-3-small (5s timeout, no retries)
+  2. Cosine similarity against stored vectors (in-memory numpy)
 """
 
 import base64
-import json
 import logging
 import math
-import time
-import urllib.request
 
 logger = logging.getLogger(__name__)
 
 OPENAI_EMBED_MODEL = "text-embedding-3-small"
 OPENAI_VISION_MODEL = "gpt-4o-mini"
-_OPENAI_BASE = "https://api.openai.com/v1"
 
 _VISION_PROMPT = (
     "Describe the visual content of this image concisely in 2-3 sentences. "
     "Include: main subjects, colors, mood, artistic style, and setting."
 )
 
+# Module-level OpenAI client — httpx-based, persistent connections, thread-safe.
+_client = None
+_client_key: str | None = None
 
-def _openai_post(url: str, body: dict, openai_api_key: str, timeout: int = 30) -> dict | None:
-    """POST to OpenAI API with 3-attempt retry on transient errors."""
-    encoded = json.dumps(body).encode()
-    req = urllib.request.Request(
-        url,
-        data=encoded,
-        headers={
-            "Authorization": f"Bearer {openai_api_key}",
-            "Content-Type": "application/json",
-        },
-    )
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read())
-        except Exception as exc:
-            if attempt < 2:
-                time.sleep(2 ** attempt)
-                continue
-            logger.warning("OpenAI API call to %s failed: %s", url, exc)
-            return None
+
+def _get_client(api_key: str):
+    global _client, _client_key
+    if _client is None or _client_key != api_key:
+        from openai import OpenAI
+        # max_retries=2 for background tasks; search overrides timeout per-call
+        _client = OpenAI(api_key=api_key, timeout=30.0, max_retries=2)
+        _client_key = api_key
+    return _client
+
+
+def embed_text(
+    text: str,
+    openai_api_key: str,
+    timeout: float = 30.0,
+) -> list[float] | None:
+    """
+    Embed text via OpenAI text-embedding-3-small.
+    Returns a 1536-dim float list, or None on failure.
+    Pass timeout=5.0 for search path so failures are fast.
+    """
+    if not text or not openai_api_key:
+        return None
+    try:
+        client = _get_client(openai_api_key)
+        resp = client.embeddings.create(
+            input=text,
+            model=OPENAI_EMBED_MODEL,
+            timeout=timeout,
+        )
+        return resp.data[0].embedding
+    except Exception as exc:
+        logger.warning("embed_text failed: %s", exc)
+        return None
 
 
 def describe_image_bytes(image_bytes: bytes, openai_api_key: str) -> str | None:
@@ -68,27 +80,26 @@ def describe_image_bytes(image_bytes: bytes, openai_api_key: str) -> str | None:
     """
     if not image_bytes or not openai_api_key:
         return None
-
-    b64 = base64.b64encode(image_bytes).decode()
-    result = _openai_post(
-        f"{_OPENAI_BASE}/chat/completions",
-        {
-            "model": OPENAI_VISION_MODEL,
-            "messages": [{
+    try:
+        import base64 as _b64
+        b64 = _b64.b64encode(image_bytes).decode()
+        client = _get_client(openai_api_key)
+        resp = client.chat.completions.create(
+            model=OPENAI_VISION_MODEL,
+            messages=[{
                 "role": "user",
                 "content": [
                     {"type": "image_url", "image_url": {"url": f"data:image/webp;base64,{b64}"}},
                     {"type": "text", "text": _VISION_PROMPT},
                 ],
             }],
-            "max_tokens": 150,
-        },
-        openai_api_key,
-        timeout=45,
-    )
-    if result:
-        return result["choices"][0]["message"]["content"]
-    return None
+            max_tokens=150,
+            timeout=45.0,
+        )
+        return resp.choices[0].message.content
+    except Exception as exc:
+        logger.warning("describe_image_bytes failed: %s", exc)
+        return None
 
 
 def describe_image_url(image_url: str, openai_api_key: str) -> str | None:
@@ -98,44 +109,24 @@ def describe_image_url(image_url: str, openai_api_key: str) -> str | None:
     """
     if not image_url or not openai_api_key:
         return None
-
-    result = _openai_post(
-        f"{_OPENAI_BASE}/chat/completions",
-        {
-            "model": OPENAI_VISION_MODEL,
-            "messages": [{
+    try:
+        client = _get_client(openai_api_key)
+        resp = client.chat.completions.create(
+            model=OPENAI_VISION_MODEL,
+            messages=[{
                 "role": "user",
                 "content": [
                     {"type": "image_url", "image_url": {"url": image_url}},
                     {"type": "text", "text": _VISION_PROMPT},
                 ],
             }],
-            "max_tokens": 150,
-        },
-        openai_api_key,
-        timeout=45,
-    )
-    if result:
-        return result["choices"][0]["message"]["content"]
-    return None
-
-
-def embed_text(text: str, openai_api_key: str) -> list[float] | None:
-    """
-    Embed text via OpenAI text-embedding-3-small.
-    Returns a 1536-dim float list, or None on failure.
-    """
-    if not text or not openai_api_key:
+            max_tokens=150,
+            timeout=45.0,
+        )
+        return resp.choices[0].message.content
+    except Exception as exc:
+        logger.warning("describe_image_url failed: %s", exc)
         return None
-
-    result = _openai_post(
-        f"{_OPENAI_BASE}/embeddings",
-        {"input": text, "model": OPENAI_EMBED_MODEL},
-        openai_api_key,
-    )
-    if result:
-        return result["data"][0]["embedding"]
-    return None
 
 
 def embed_image_bytes(image_bytes: bytes, hf_token: str) -> list[float] | None:

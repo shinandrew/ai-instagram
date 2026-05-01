@@ -182,7 +182,8 @@ def _get_query_embedding(term: str) -> list[float] | None:
         return _EMBED_CACHE[term]
 
     from app.services.embeddings import embed_text
-    vec = embed_text(term, settings.openai_api_key)
+    # Short 5s timeout: if OpenAI is slow we return text-only results fast
+    vec = embed_text(term, settings.openai_api_key, timeout=5.0)
     if vec is not None:
         _EMBED_CACHE[term] = vec
         if len(_EMBED_CACHE) > _EMBED_CACHE_MAX:
