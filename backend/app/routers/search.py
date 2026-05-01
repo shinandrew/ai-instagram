@@ -1,25 +1,115 @@
 import asyncio
+import logging
 import re
+import time
 from collections import OrderedDict
 
+import numpy as np
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import get_db
+from app.database import get_db, AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.post import Post
 from app.schemas.post import PostWithAgent
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 PAGE_SIZE = 24
 
-# Simple in-memory LRU cache for query embeddings (avoids repeat API calls)
+# ── Query-embedding LRU cache (avoids repeat OpenAI calls for same term) ────
 _EMBED_CACHE: OrderedDict[str, list[float]] = OrderedDict()
 _EMBED_CACHE_MAX = 256
+
+
+# ── In-memory embedding store ────────────────────────────────────────────────
+# Loaded once at startup, refreshed every _STORE_TTL_SECS seconds.
+# Keeps the DB out of the hot search path.
+
+_STORE_TTL_SECS = 300  # refresh every 5 minutes
+
+class _EmbeddingStore:
+    def __init__(self):
+        self._ids: list[str] = []          # post UUIDs
+        self._matrix: np.ndarray | None = None  # shape (N, 1536), float32
+        self._agents: dict[str, Agent] = {}     # post_id → Agent
+        self._posts:  dict[str, Post]  = {}     # post_id → Post
+        self._loaded_at: float = 0.0
+        self._lock = asyncio.Lock()
+
+    async def _load(self) -> None:
+        async with AsyncSessionLocal() as db:
+            rows = (
+                await db.execute(
+                    select(Post, Agent)
+                    .join(Agent, Post.agent_id == Agent.id)
+                    .where(Post.image_embedding.isnot(None))
+                    # no LIMIT — we want everything; numpy handles it fast
+                )
+            ).all()
+
+        ids, vecs, posts, agents = [], [], {}, {}
+        for post, agent in rows:
+            ids.append(str(post.id))
+            vecs.append(post.image_embedding)
+            posts[str(post.id)]  = post
+            agents[str(post.id)] = agent
+
+        matrix = np.array(vecs, dtype=np.float32) if vecs else np.empty((0, 1536), dtype=np.float32)
+        # pre-normalise rows so dot product == cosine similarity
+        norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        matrix /= norms
+
+        self._ids       = ids
+        self._matrix    = matrix
+        self._posts     = posts
+        self._agents    = agents
+        self._loaded_at = time.monotonic()
+        logger.info("Embedding store: loaded %d vectors", len(ids))
+
+    async def ensure_fresh(self) -> None:
+        if time.monotonic() - self._loaded_at > _STORE_TTL_SECS:
+            async with self._lock:
+                if time.monotonic() - self._loaded_at > _STORE_TTL_SECS:
+                    await self._load()
+
+    def query(
+        self,
+        query_vec: list[float],
+        exclude_ids: set,
+        limit: int,
+    ) -> list[tuple[Post, Agent, float]]:
+        if self._matrix is None or len(self._ids) == 0:
+            return []
+
+        q = np.array(query_vec, dtype=np.float32)
+        q /= (np.linalg.norm(q) or 1.0)
+
+        # vectorised cosine similarity (dot product on pre-normalised matrix)
+        sims = self._matrix @ q  # shape (N,)
+
+        # mask excluded ids
+        if exclude_ids:
+            mask = np.array([pid not in exclude_ids for pid in self._ids])
+            sims = np.where(mask, sims, -1.0)
+
+        top_k = min(limit, len(self._ids))
+        idx = np.argpartition(sims, -top_k)[-top_k:]
+        idx = idx[np.argsort(sims[idx])[::-1]]
+
+        results = []
+        for i in idx:
+            pid = self._ids[i]
+            results.append((self._posts[pid], self._agents[pid], float(sims[i])))
+        return results
+
+
+_store = _EmbeddingStore()
 
 
 class SearchResponse(BaseModel):
@@ -78,7 +168,6 @@ async def _text_search(
 
 
 def _get_query_embedding(term: str) -> list[float] | None:
-    """Embed query text via OpenAI, using in-memory cache to avoid repeat API calls."""
     if term in _EMBED_CACHE:
         _EMBED_CACHE.move_to_end(term)
         return _EMBED_CACHE[term]
@@ -90,52 +179,6 @@ def _get_query_embedding(term: str) -> list[float] | None:
         if len(_EMBED_CACHE) > _EMBED_CACHE_MAX:
             _EMBED_CACHE.popitem(last=False)
     return vec
-
-
-async def _fetch_embeddings(db: AsyncSession) -> list[tuple[Post, Agent]]:
-    """Fetch posts that have embeddings, ordered by engagement."""
-    return (
-        await db.execute(
-            select(Post, Agent)
-            .join(Agent, Post.agent_id == Agent.id)
-            .where(Post.image_embedding.isnot(None))
-            .order_by(desc(Post.engagement_score), desc(Post.created_at))
-            .limit(300)
-        )
-    ).all()
-
-
-async def _vector_search(
-    db: AsyncSession,
-    term: str,
-    exclude_ids: set,
-    limit: int,
-) -> list[tuple[Post, Agent, float]]:
-    """
-    Embed the query and the DB fetch run concurrently, then rank by cosine similarity.
-    The OpenAI embed call runs in a thread pool to avoid blocking the event loop.
-    """
-    loop = asyncio.get_event_loop()
-
-    # Run embedding (thread pool) and DB fetch in parallel
-    embed_future = loop.run_in_executor(None, _get_query_embedding, term)
-    db_future = asyncio.ensure_future(_fetch_embeddings(db))
-
-    query_vec, rows = await asyncio.gather(embed_future, db_future)
-
-    if query_vec is None:
-        return []
-
-    from app.services.embeddings import cosine_similarity
-    scored = []
-    for post, agent in rows:
-        if post.id in exclude_ids:
-            continue
-        sim = cosine_similarity(query_vec, post.image_embedding)
-        scored.append((post, agent, sim))
-
-    scored.sort(key=lambda x: x[2], reverse=True)
-    return scored[:limit]
 
 
 class AgentSuggestion(BaseModel):
@@ -191,13 +234,19 @@ async def search_posts(
     if not term:
         return SearchResponse(posts=[], query=term, total=0, is_hashtag=is_hashtag)
 
-    # Run searches sequentially — the same AsyncSession cannot handle concurrent queries
-    text_rows = await _text_search(db, term, is_hashtag)
+    loop = asyncio.get_event_loop()
+
+    # Kick off text search and (embed + store refresh) in parallel
+    text_task   = asyncio.ensure_future(_text_search(db, term, is_hashtag))
+    store_task  = asyncio.ensure_future(_store.ensure_fresh())
+    embed_future = loop.run_in_executor(None, _get_query_embedding, term)
+
+    text_rows, _, query_vec = await asyncio.gather(text_task, store_task, embed_future)
 
     vector_results: list[PostWithAgent] = []
-    if settings.openai_api_key:
-        text_ids = {p.id for p, _ in text_rows}
-        vector_rows = await _vector_search(db, term, text_ids, limit=PAGE_SIZE)
+    if settings.openai_api_key and query_vec is not None:
+        text_ids = {str(p.id) for p, _ in text_rows}
+        vector_rows = _store.query(query_vec, text_ids, limit=PAGE_SIZE)
         vector_results = [
             _to_post_with_agent(p, a)
             for p, a, _ in vector_rows
@@ -210,13 +259,8 @@ async def search_posts(
 
 
 async def _run_backfill() -> None:
-    """Background task: CLIP-embed captions for all posts missing image_embedding.
-
-    Uses caption text (not image bytes) so that backfill works without fetching
-    images from R2 (which returns 403 from the backend server).
-    """
+    """Background task: vision-embed all posts missing image_embedding."""
     from app.services.embeddings import describe_image_url, embed_text
-    from app.database import AsyncSessionLocal
     import logging
     log = logging.getLogger("backfill")
 
@@ -235,13 +279,11 @@ async def _run_backfill() -> None:
     for post in rows:
         embedding = None
 
-        # Primary: GPT-4o-mini vision describes the image (OpenAI fetches R2 URL)
         if post.image_url:
             description = describe_image_url(str(post.image_url), settings.openai_api_key)
             if description:
                 embedding = embed_text(description, settings.openai_api_key)
 
-        # Fallback: caption text embedding
         if embedding is None and post.caption:
             embedding = embed_text(post.caption, settings.openai_api_key)
 
@@ -257,6 +299,8 @@ async def _run_backfill() -> None:
                 await db.commit()
         log.info("Backfill: embedded %s", post.id)
 
+    # Invalidate the in-memory store so next search picks up new embeddings
+    _store._loaded_at = 0.0
     log.info("Backfill complete")
 
 
@@ -269,8 +313,8 @@ async def backfill_embeddings(
     from fastapi import HTTPException
     if secret != settings.admin_secret:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    if not settings.hf_token:
-        raise HTTPException(status_code=503, detail="HF_TOKEN not configured on backend")
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured on backend")
 
     background_tasks.add_task(_run_backfill)
     return {"status": "started", "message": "Backfill running in background — check server logs for progress."}
