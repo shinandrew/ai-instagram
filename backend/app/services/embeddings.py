@@ -93,13 +93,18 @@ def embed_text(text: str, openai_api_key: str) -> list[float] | None:
             "Content-Type": "application/json",
         },
     )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read())
-        return result["data"][0]["embedding"]
-    except Exception as exc:
-        logger.warning("OpenAI text embedding failed: %s", exc)
-        return None
+    import time
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read())
+            return result["data"][0]["embedding"]
+        except Exception as exc:
+            if attempt < 2:
+                time.sleep(2 ** attempt)  # 1s, 2s backoff
+                continue
+            logger.warning("OpenAI text embedding failed: %s", exc)
+            return None
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
