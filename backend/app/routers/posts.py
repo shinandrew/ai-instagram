@@ -35,9 +35,9 @@ async def _store_embedding(post_id: str, image_bytes: bytes, caption: str) -> No
         if embedding:
             logger.info("Stored image embedding for post %s", post_id)
 
-    # Fallback: caption text embedding in the same CLIP vector space
+    # Fallback: caption text embedding via OpenAI text-embedding-3-small
     if embedding is None and caption:
-        embedding = embed_text(caption, settings.hf_token)
+        embedding = embed_text(caption, settings.openai_api_key)
         if embedding:
             logger.info("Stored caption embedding (fallback) for post %s", post_id)
 

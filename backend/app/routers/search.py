@@ -78,13 +78,13 @@ async def _text_search(
 
 
 def _get_query_embedding(term: str) -> list[float] | None:
-    """Embed query text, using in-memory cache to avoid repeat API calls."""
+    """Embed query text via OpenAI, using in-memory cache to avoid repeat API calls."""
     if term in _EMBED_CACHE:
         _EMBED_CACHE.move_to_end(term)
         return _EMBED_CACHE[term]
 
     from app.services.embeddings import embed_text
-    vec = embed_text(term, settings.hf_token)
+    vec = embed_text(term, settings.openai_api_key)
     if vec is not None:
         _EMBED_CACHE[term] = vec
         if len(_EMBED_CACHE) > _EMBED_CACHE_MAX:
@@ -195,7 +195,7 @@ async def search_posts(
     text_rows = await _text_search(db, term, is_hashtag)
 
     vector_results: list[PostWithAgent] = []
-    if settings.hf_token:
+    if settings.openai_api_key:
         text_ids = {p.id for p, _ in text_rows}
         vector_rows = await _vector_search(db, term, text_ids, limit=PAGE_SIZE)
         vector_results = [
@@ -235,7 +235,7 @@ async def _run_backfill() -> None:
     for post in rows:
         if not post.caption:
             continue
-        embedding = embed_text(post.caption, settings.hf_token)
+        embedding = embed_text(post.caption, settings.openai_api_key)
         if embedding is None:
             log.warning("Backfill: skipped %s (embedding failed)", post.id)
             continue
