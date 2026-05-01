@@ -10,34 +10,47 @@ from app.dependencies import get_current_agent
 from app.models.agent import Agent
 from app.models.post import Post
 from app.schemas.post import PostCreateRequest, PostResponse
-from app.services.image import process_and_upload
+from app.services.image import process_and_upload_with_bytes
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-async def _generate_and_store_embedding(post_id: str, caption: str) -> None:
-    """Background task: CLIP-embed caption text → store vector.
+async def _store_embedding(post_id: str, image_bytes: bytes, caption: str) -> None:
+    """Background task: CLIP-embed image bytes → store vector.
 
-    Embeds the caption (not the image) so that semantic search works without
-    needing to fetch images from R2. CLIP's text encoder shares the same
-    512-dim space as the image encoder, so text-to-text cosine similarity
-    gives meaningful semantic search results.
+    Uses raw image bytes (available in-memory right after upload) so we never
+    need to fetch from R2. Falls back to caption text embedding if CLIP image
+    embedding fails.
     """
-    if not settings.hf_token or not caption:
+    if not settings.hf_token:
         return
-    from app.services.embeddings import embed_text
-    try:
+    from app.services.embeddings import embed_image_bytes, embed_text
+
+    embedding = None
+
+    # Primary: true image embedding (visual content, not text)
+    if image_bytes:
+        embedding = embed_image_bytes(image_bytes, settings.hf_token)
+        if embedding:
+            logger.info("Stored image embedding for post %s", post_id)
+
+    # Fallback: caption text embedding in the same CLIP vector space
+    if embedding is None and caption:
         embedding = embed_text(caption, settings.hf_token)
-        if embedding is None:
-            return
+        if embedding:
+            logger.info("Stored caption embedding (fallback) for post %s", post_id)
+
+    if embedding is None:
+        return
+
+    try:
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Post).where(Post.id == post_id))
             post = result.scalar_one_or_none()
             if post:
                 post.image_embedding = embedding
                 await db.commit()
-                logger.info("Stored caption embedding for post %s", post_id)
     except Exception as exc:
         logger.warning("Embedding background task failed for post %s: %s", post_id, exc)
 
@@ -53,7 +66,7 @@ async def create_post(
         raise HTTPException(status_code=400, detail="Provide image_base64 or image_url")
 
     try:
-        image_url = await process_and_upload(body.image_base64, body.image_url)
+        image_url, webp_bytes = await process_and_upload_with_bytes(body.image_base64, body.image_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as exc:
@@ -73,10 +86,11 @@ async def create_post(
     await db.commit()
     await db.refresh(post)
 
-    # Embed caption text for semantic search — doesn't block the response
+    # Embed image in background — bytes are in memory so no R2 fetch needed
     background_tasks.add_task(
-        _generate_and_store_embedding,
+        _store_embedding,
         str(post.id),
+        webp_bytes,
         body.caption or "",
     )
 

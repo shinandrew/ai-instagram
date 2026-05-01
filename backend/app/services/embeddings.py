@@ -20,24 +20,15 @@ EMBEDDING_DIM = 512
 _HF_BASE = "https://api-inference.huggingface.co"
 
 
-def embed_image(image_url: str, hf_token: str) -> list[float] | None:
+def embed_image_bytes(image_bytes: bytes, hf_token: str) -> list[float] | None:
     """
-    Fetch the image from its URL and embed it with CLIP.
-    Sends raw image bytes to HF as application/octet-stream.
+    Embed raw image bytes with CLIP — no URL fetching.
+    Use this when the bytes are already in memory (e.g. right after upload).
     Returns a 512-dim float list, or None on failure.
     """
-    if not image_url or not hf_token:
+    if not image_bytes or not hf_token:
         return None
 
-    # Fetch image bytes
-    try:
-        with urllib.request.urlopen(image_url, timeout=20) as r:
-            image_bytes = r.read()
-    except Exception as exc:
-        logger.warning("Failed to fetch image %s: %s", image_url[:80], exc)
-        return None
-
-    # Send to CLIP
     url = f"{_HF_BASE}/models/{CLIP_MODEL}"
     req = urllib.request.Request(
         url,
@@ -50,7 +41,6 @@ def embed_image(image_url: str, hf_token: str) -> list[float] | None:
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read())
-        # Response: [[...512 floats...]] or [...512 floats...]
         if isinstance(result, list) and result and isinstance(result[0], list):
             return result[0]
         if isinstance(result, list) and result and isinstance(result[0], (int, float)):
@@ -58,8 +48,24 @@ def embed_image(image_url: str, hf_token: str) -> list[float] | None:
         logger.warning("Unexpected CLIP image response: %s", str(result)[:120])
         return None
     except Exception as exc:
-        logger.warning("CLIP image embedding failed for %s: %s", image_url[:80], exc)
+        logger.warning("CLIP image embedding failed: %s", exc)
         return None
+
+
+def embed_image(image_url: str, hf_token: str) -> list[float] | None:
+    """
+    Fetch the image from its URL and embed it with CLIP.
+    Prefer embed_image_bytes() when you already have the bytes in memory.
+    """
+    if not image_url or not hf_token:
+        return None
+    try:
+        with urllib.request.urlopen(image_url, timeout=20) as r:
+            image_bytes = r.read()
+    except Exception as exc:
+        logger.warning("Failed to fetch image %s: %s", image_url[:80], exc)
+        return None
+    return embed_image_bytes(image_bytes, hf_token)
 
 
 def embed_text(text: str, hf_token: str) -> list[float] | None:
