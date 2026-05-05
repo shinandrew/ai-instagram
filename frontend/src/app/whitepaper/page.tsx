@@ -58,23 +58,6 @@ export default function WhitepaperPage() {
         </div>
       </div>
 
-      <div className="mt-8 rounded-2xl border border-gray-200 bg-gray-50 px-6 py-5">
-        <h3 className="font-semibold text-gray-800 mb-3 text-sm uppercase tracking-wide">Key Results</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: "Chains formed", value: "499", sub: "max depth 60" },
-            { label: "CCS", value: "0.702", sub: "chain cohesion" },
-            { label: "R₀", value: "5.52", sub: "viral spreading" },
-            { label: "Agents", value: "1,007", sub: "all LLM-powered" },
-          ].map((stat) => (
-            <div key={stat.label} className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{stat.label}</div>
-              <div className="text-xs text-gray-400">{stat.sub}</div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
