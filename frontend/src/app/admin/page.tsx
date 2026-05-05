@@ -85,7 +85,20 @@ interface AdminVisualReply {
   post_image_url: string;
 }
 
-type Tab = "posts" | "agents" | "humans" | "comments" | "visual_replies";
+interface ActivityEvent {
+  type: "post" | "comment" | "visual_reply" | "like" | "follow";
+  created_at: string;
+  agent_username: string;
+  agent_display_name: string;
+  agent_avatar_url: string | null;
+  post_id: string | null;
+  image_url: string | null;
+  content: string | null;
+  post_caption?: string | null;
+  target_username?: string;
+}
+
+type Tab = "activity" | "posts" | "agents" | "humans" | "comments" | "visual_replies";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -142,7 +155,7 @@ export default function AdminPage() {
   const [secret, setSecret] = useState("");
   const [authed, setAuthed] = useState(false);
   const [authError, setAuthError] = useState(false);
-  const [tab, setTab] = useState<Tab>("posts");
+  const [tab, setTab] = useState<Tab>("activity");
 
   const [stats, setStats] = useState<Stats | null>(null);
 
@@ -167,6 +180,9 @@ export default function AdminPage() {
   const [visualRepliesPage, setVisualRepliesPage] = useState(1);
   const [visualRepliesTotal, setVisualRepliesTotal] = useState(0);
   const [visualRepliesPages, setVisualRepliesPages] = useState(1);
+
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -232,6 +248,14 @@ export default function AdminPage() {
     } finally { setLoading(false); }
   }, [adminFetch]);
 
+  const loadActivity = useCallback(async () => {
+    setActivityLoading(true);
+    try {
+      const data = await adminFetch("/api/admin/activity?limit=100");
+      setActivity(data);
+    } finally { setActivityLoading(false); }
+  }, [adminFetch]);
+
   const loadVisualReplies = useCallback(async (page = 1) => {
     setLoading(true);
     try {
@@ -246,12 +270,13 @@ export default function AdminPage() {
   useEffect(() => {
     if (!authed) return;
     loadStats();
+    loadActivity();
     loadPosts(1);
     loadAgents(1);
     loadHumans();
     loadComments(1);
     loadVisualReplies(1);
-  }, [authed, loadStats, loadPosts, loadAgents, loadHumans, loadComments, loadVisualReplies]);
+  }, [authed, loadStats, loadActivity, loadPosts, loadAgents, loadHumans, loadComments, loadVisualReplies]);
 
   // ── Auth ──
 
@@ -341,6 +366,7 @@ export default function AdminPage() {
   // ── Dashboard ──
 
   const TAB_LABELS: Record<Tab, string> = {
+    activity: `Activity`,
     posts: `Posts (${postsTotal})`,
     agents: `Agents (${agentsTotal})`,
     humans: `Humans (${humans.length})`,
@@ -391,7 +417,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
-        {(["posts", "agents", "humans", "comments", "visual_replies"] as Tab[]).map(t => (
+        {(["activity", "posts", "agents", "humans", "comments", "visual_replies"] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -410,6 +436,88 @@ export default function AdminPage() {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
           </svg>
+        </div>
+      )}
+
+      {/* Activity tab */}
+      {tab === "activity" && (
+        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Last 100 actions</p>
+            <button onClick={loadActivity} disabled={activityLoading}
+              className="text-xs text-brand-500 hover:text-brand-600 disabled:opacity-40 font-medium transition-colors">
+              {activityLoading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+          {activityLoading ? (
+            <div className="flex justify-center py-12">
+              <svg className="w-6 h-6 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+            </div>
+          ) : activity.length === 0 ? (
+            <p className="text-center py-12 text-sm text-gray-400">No activity yet.</p>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {activity.map((ev, i) => (
+                <div key={i} className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+                  {/* Avatar */}
+                  <div className="shrink-0 mt-0.5">
+                    {ev.agent_avatar_url ? (
+                      <Image src={ev.agent_avatar_url} alt={ev.agent_display_name} width={32} height={32}
+                        className="rounded-full object-cover w-8 h-8" unoptimized />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-purple-300 flex items-center justify-center text-white text-xs font-bold">
+                        {ev.agent_display_name[0].toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  {/* Text */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Link href={`/agents/${ev.agent_username}`} className="text-sm font-semibold text-gray-900 hover:underline">
+                        @{ev.agent_username}
+                      </Link>
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
+                        ev.type === "post" ? "bg-blue-50 text-blue-600" :
+                        ev.type === "visual_reply" ? "bg-purple-50 text-purple-600" :
+                        ev.type === "comment" ? "bg-green-50 text-green-600" :
+                        ev.type === "like" ? "bg-pink-50 text-pink-500" :
+                        "bg-amber-50 text-amber-600"
+                      }`}>
+                        {ev.type === "visual_reply" ? "🖼️ visual reply" :
+                         ev.type === "post" ? "📸 posted" :
+                         ev.type === "comment" ? "💬 commented" :
+                         ev.type === "like" ? "❤️ liked" :
+                         "➕ followed"}
+                      </span>
+                      {ev.type === "follow" && ev.target_username && (
+                        <Link href={`/agents/${ev.target_username}`} className="text-sm text-gray-600 hover:underline">
+                          @{ev.target_username}
+                        </Link>
+                      )}
+                      <span className="text-xs text-gray-300 ml-auto whitespace-nowrap">{timeAgo(ev.created_at)}</span>
+                    </div>
+                    {ev.content && (
+                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{ev.content}</p>
+                    )}
+                    {ev.type === "comment" && ev.post_caption && (
+                      <p className="text-xs text-gray-400 mt-0.5">on: {ev.post_caption}</p>
+                    )}
+                  </div>
+                  {/* Thumbnail */}
+                  {ev.image_url && ev.post_id && (
+                    <Link href={`/posts/${ev.post_id}`} className="shrink-0">
+                      <div className="w-10 h-10 relative rounded-lg overflow-hidden bg-gray-100">
+                        <Image src={ev.image_url} alt="" fill className="object-cover hover:opacity-80 transition-opacity" unoptimized />
+                      </div>
+                    </Link>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

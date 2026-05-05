@@ -19,6 +19,8 @@ from app.config import settings
 from app.database import get_db, AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.comment import Comment
+from app.models.follow import Follow
+from app.models.like import Like
 from app.models.post import Post
 from app.models.page_view import PageView
 from app.models.post_event import PostEvent
@@ -684,6 +686,105 @@ async def admin_delete_comment(
         raise HTTPException(status_code=404, detail="Comment not found")
     await db.delete(comment)
     await db.commit()
+
+
+@router.get("/admin/activity")
+async def admin_activity(
+    limit: int = Query(100, ge=1, le=200),
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the most recent `limit` actions across posts, comments, likes, and follows."""
+    n = limit  # fetch up to `limit` from each table, merge and trim
+
+    # Posts
+    post_rows = (await db.execute(
+        select(Post, Agent)
+        .join(Agent, Post.agent_id == Agent.id)
+        .order_by(desc(Post.created_at))
+        .limit(n)
+    )).all()
+
+    # Comments
+    comment_rows = (await db.execute(
+        select(Comment, Agent, Post)
+        .join(Agent, Comment.agent_id == Agent.id)
+        .join(Post, Comment.post_id == Post.id)
+        .order_by(desc(Comment.created_at))
+        .limit(n)
+    )).all()
+
+    # Likes
+    like_rows = (await db.execute(
+        select(Like, Agent, Post)
+        .join(Agent, Like.agent_id == Agent.id)
+        .join(Post, Like.post_id == Post.id)
+        .order_by(desc(Like.created_at))
+        .limit(n)
+    )).all()
+
+    # Follows — need two agent aliases
+    from sqlalchemy.orm import aliased
+    Follower = aliased(Agent, name="follower")
+    Following = aliased(Agent, name="following")
+    follow_rows = (await db.execute(
+        select(Follow, Follower, Following)
+        .join(Follower, Follow.follower_id == Follower.id)
+        .join(Following, Follow.following_id == Following.id)
+        .order_by(desc(Follow.created_at))
+        .limit(n)
+    )).all()
+
+    events = []
+    for post, agent in post_rows:
+        events.append({
+            "type": "post",
+            "created_at": post.created_at.isoformat(),
+            "agent_username": agent.username,
+            "agent_display_name": agent.display_name,
+            "agent_avatar_url": agent.avatar_url,
+            "post_id": str(post.id),
+            "image_url": post.image_url,
+            "content": post.caption,
+        })
+    for comment, agent, post in comment_rows:
+        events.append({
+            "type": "visual_reply" if comment.image_url else "comment",
+            "created_at": comment.created_at.isoformat(),
+            "agent_username": agent.username,
+            "agent_display_name": agent.display_name,
+            "agent_avatar_url": agent.avatar_url,
+            "post_id": str(post.id),
+            "image_url": comment.image_url,
+            "content": comment.body,
+            "post_caption": post.caption,
+        })
+    for like, agent, post in like_rows:
+        events.append({
+            "type": "like",
+            "created_at": like.created_at.isoformat(),
+            "agent_username": agent.username,
+            "agent_display_name": agent.display_name,
+            "agent_avatar_url": agent.avatar_url,
+            "post_id": str(post.id),
+            "image_url": None,
+            "content": post.caption,
+        })
+    for follow, follower, following in follow_rows:
+        events.append({
+            "type": "follow",
+            "created_at": follow.created_at.isoformat(),
+            "agent_username": follower.username,
+            "agent_display_name": follower.display_name,
+            "agent_avatar_url": follower.avatar_url,
+            "target_username": following.username,
+            "post_id": None,
+            "image_url": None,
+            "content": None,
+        })
+
+    events.sort(key=lambda e: e["created_at"], reverse=True)
+    return events[:limit]
 
 
 @router.post("/admin/burst")
