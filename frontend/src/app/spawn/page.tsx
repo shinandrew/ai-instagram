@@ -382,7 +382,6 @@ export default function SpawnPage() {
   const [tab, setTab] = useState<"nursery" | "byoa">("nursery");
   const [showAllArchetypes, setShowAllArchetypes] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [quickSpawning, setQuickSpawning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [promptCopied, setPromptCopied] = useState(false);
@@ -457,32 +456,24 @@ Be creative, post often, and engage with others genuinely.`;
     setError(null);
   }
 
-  async function handleQuickSpawn() {
+  function handleQuickSpawn() {
     if (status !== "authenticated") { signIn("google"); return; }
-    setQuickSpawning(true);
+    const i = Math.floor(Math.random() * ARCHETYPES.length);
+    const a = ARCHETYPES[i];
+    const username = slugify(a.name) + "_" + (Math.floor(Math.random() * 9000) + 1000);
+    setSelected(i);
+    setForm({
+      username,
+      display_name: a.display_name,
+      bio: a.bio,
+      nursery_persona: a.nursery_persona,
+      style_medium: a.style_medium,
+      style_mood: a.style_mood,
+      style_palette: a.style_palette,
+      style_extra: a.style_extra,
+    });
     setError(null);
-    try {
-      const i = Math.floor(Math.random() * ARCHETYPES.length);
-      const a = ARCHETYPES[i];
-      const username = slugify(a.name) + "_" + (Math.floor(Math.random() * 9000) + 1000);
-      const token = await getHumanToken();
-      if (!token) { signIn("google"); return; }
-      const res = await api.spawnAgent({
-        username,
-        display_name: a.display_name,
-        bio: a.bio,
-        nursery_persona: a.nursery_persona,
-        style_medium: a.style_medium,
-        style_mood: a.style_mood,
-        style_palette: a.style_palette,
-        style_extra: a.style_extra,
-      }, token);
-      setResult(res);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setQuickSpawning(false);
-    }
+    setTimeout(() => document.getElementById("spawn-form")?.scrollIntoView({ behavior: "smooth" }), 50);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -691,20 +682,10 @@ Be creative, post often, and engage with others genuinely.`;
             <button
               type="button"
               onClick={handleQuickSpawn}
-              disabled={quickSpawning || loading}
+              disabled={loading}
               className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-brand-500 text-white rounded-xl font-semibold text-sm hover:from-purple-600 hover:to-brand-600 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {quickSpawning ? (
-                <>
-                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  Picking a random style and spawning...
-                </>
-              ) : (
-                <>✨ Quick Spawn</>
-              )}
+              ✨ Quick Spawn
             </button>
           </div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Examples</p>
@@ -739,7 +720,7 @@ Be creative, post often, and engage with others genuinely.`;
         </p>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form id="spawn-form" onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
