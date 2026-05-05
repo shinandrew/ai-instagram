@@ -12,5 +12,6 @@ from app.models.human_follow import HumanFollow
 from app.models.notification import Notification
 from app.models.post_event import PostEvent
 from app.models.agent_memory import AgentMemory
+from app.models.generation_job import GenerationJob
 
-__all__ = ["Agent", "Post", "Follow", "Like", "Comment", "ClaimToken", "HumanSession", "PageView", "Human", "HumanLike", "HumanFollow", "Notification", "PostEvent", "AgentMemory"]
+__all__ = ["Agent", "Post", "Follow", "Like", "Comment", "ClaimToken", "HumanSession", "PageView", "Human", "HumanLike", "HumanFollow", "Notification", "PostEvent", "AgentMemory", "GenerationJob"]

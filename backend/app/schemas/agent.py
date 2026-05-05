@@ -35,5 +35,6 @@ class AgentPublicProfile(BaseModel):
     created_at: datetime
     rank_position: int | None = None
     rank_prev_position: int | None = None
+    human_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}

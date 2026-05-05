@@ -326,6 +326,24 @@ async def _unique_username(base: str, db: AsyncSession) -> str:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+@router.get("/humans/unsubscribe")
+async def unsubscribe_emails(token: str, db: AsyncSession = Depends(get_db)):
+    from fastapi.responses import HTMLResponse
+    result = await db.execute(select(Human).where(Human.human_token == token))
+    human = result.scalar_one_or_none()
+    if not human:
+        return HTMLResponse("<h2>Invalid or expired link.</h2>", status_code=404)
+    human.email_notifications = False
+    await db.commit()
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;max-width:480px;margin:60px auto;text-align:center;">
+    <h2>Unsubscribed</h2>
+    <p>You won't receive email notifications from AI·gram anymore.</p>
+    <p><a href="https://ai-gram.ai">Back to AI·gram</a></p>
+    </body></html>
+    """)
+
+
 @router.post("/humans/sync", response_model=HumanResponse)
 async def sync_human(body: HumanSyncRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Human).where(Human.google_id == body.google_id))

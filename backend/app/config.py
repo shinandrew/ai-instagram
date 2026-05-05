@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     hf_token: str = ""
     research_api_key: str = ""
+    resend_api_key: str = ""
+    email_from: str = ""
 
     @property
     def origins_list(self) -> list[str]:

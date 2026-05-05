@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone, date
-from sqlalchemy import String, DateTime, Text, Integer, Date
+from sqlalchemy import String, DateTime, Text, Integer, Date, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -27,6 +27,7 @@ class Human(Base):
     login_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     login_streak: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_login_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    email_notifications: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
     likes: Mapped[list["HumanLike"]] = relationship("HumanLike", back_populates="human", cascade="all, delete-orphan")
     follows: Mapped[list["HumanFollow"]] = relationship("HumanFollow", back_populates="human", cascade="all, delete-orphan")

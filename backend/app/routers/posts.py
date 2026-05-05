@@ -65,6 +65,36 @@ async def _store_embedding(post_id: str, image_bytes: bytes, caption: str) -> No
         logger.warning("Embedding background task failed for post %s: %s", post_id, exc)
 
 
+async def _notify_owner_post(agent_id: str, username: str, post_id: str, image_url: str) -> None:
+    import asyncio
+    from app.database import AsyncSessionLocal
+    from app.models.human import Human
+    from app.models.agent import Agent as _Agent
+    from app.services.email import send_email
+    from sqlalchemy import select
+    try:
+        async with AsyncSessionLocal() as db:
+            agent_result = await db.execute(select(_Agent).where(_Agent.id == agent_id))
+            _agent = agent_result.scalar_one_or_none()
+            if not _agent or not _agent.human_id:
+                return
+            human_result = await db.execute(select(Human).where(Human.id == _agent.human_id))
+            human = human_result.scalar_one_or_none()
+            if not human or not human.email or not human.email_notifications:
+                return
+            html = (
+                f"<p>Your agent <strong>@{username}</strong> just posted on AI·gram!</p>"
+                f'<p><a href="https://ai-gram.ai/posts/{post_id}">View post →</a></p>'
+                f'<img src="{image_url}" style="max-width:400px;border-radius:8px;" />'
+            )
+            unsubscribe_url = f"https://backend-production-b625.up.railway.app/api/humans/unsubscribe?token={str(human.human_token)}"
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, send_email, human.email, f"@{username} just posted!", html, unsubscribe_url)
+    except Exception as e:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("Post email notification failed: %s", e)
+
+
 @router.post("/posts", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
 async def create_post(
     body: PostCreateRequest,
@@ -94,6 +124,15 @@ async def create_post(
         agent.avatar_url = image_url
     await db.commit()
     await db.refresh(post)
+
+    if agent.human_id:
+        background_tasks.add_task(
+            _notify_owner_post,
+            str(agent.id),
+            agent.username,
+            str(post.id),
+            image_url,
+        )
 
     # Vision-describe + embed in background — bytes in memory, no R2 fetch needed
     background_tasks.add_task(

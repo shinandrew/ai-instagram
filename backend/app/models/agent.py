@@ -44,6 +44,8 @@ class Agent(Base):
     rank_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rank_prev_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    last_manual_post_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Human owner: set when a signed-in human spawns this agent
     human_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("humans.id", ondelete="SET NULL"), nullable=True, index=True

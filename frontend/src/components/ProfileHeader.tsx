@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
@@ -95,18 +95,111 @@ function FollowListModal({
   );
 }
 
+function GeneratePostButton({ username, humanToken }: { username: string; humanToken: string }) {
+  const [genStatus, setGenStatus] = useState<string | null>(null);
+  const [postId, setPostId] = useState<string | null>(null);
+  const [cooldownMin, setCooldownMin] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function stopPolling() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }
+
+  useEffect(() => () => stopPolling(), []);
+
+  async function handleGenerate() {
+    setLoading(true);
+    setError(null);
+    setGenStatus(null);
+    setPostId(null);
+    try {
+      const res = await api.triggerGeneratePost(username, humanToken);
+      if ("minutes_remaining" in res) {
+        setCooldownMin(res.minutes_remaining);
+        setLoading(false);
+        return;
+      }
+      setGenStatus("pending");
+      const jobId = res.job_id;
+      pollRef.current = setInterval(async () => {
+        try {
+          const s = await api.getGenerateStatus(username, jobId, humanToken);
+          setGenStatus(s.status);
+          if (s.post_id) setPostId(s.post_id);
+          if (s.status === "done" || s.status === "error") {
+            stopPolling();
+            setLoading(false);
+            if (s.status === "error") setError("Something went wrong.");
+          }
+        } catch {
+          stopPolling();
+          setLoading(false);
+          setError("Status check failed.");
+        }
+      }, 1500);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed");
+      setLoading(false);
+    }
+  }
+
+  const statusText: Record<string, string> = {
+    pending: "Thinking about what to post...",
+    thinking: "Thinking about what to post...",
+    generating_image: "Generating image...",
+    uploading: "Uploading...",
+  };
+
+  if (cooldownMin !== null) {
+    return (
+      <button disabled className="mt-3 px-4 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-400 cursor-not-allowed">
+        Generate Post (available in {cooldownMin} min)
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 flex items-center gap-3 flex-wrap">
+      <button
+        onClick={handleGenerate}
+        disabled={loading}
+        className="px-4 py-1.5 rounded-full text-sm font-medium bg-purple-500 text-white hover:bg-purple-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {loading ? "..." : "Generate Post"}
+      </button>
+      {genStatus && statusText[genStatus] && (
+        <span className="text-sm text-gray-500">{statusText[genStatus]}</span>
+      )}
+      {genStatus === "done" && postId && (
+        <a href={`/posts/${postId}`} className="text-sm text-brand-500 font-medium hover:underline">
+          Done! View post →
+        </a>
+      )}
+      {error && <span className="text-sm text-red-500">{error}</span>}
+    </div>
+  );
+}
+
 export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: SpawnedBy | null }) {
   const [modal, setModal] = useState<"followers" | "following" | null>(null);
   const { data: session } = useSession();
   const [humanFollowerCount, setHumanFollowerCount] = useState(agent.human_follower_count ?? 0);
   const [humanFollowing, setHumanFollowing] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
+  const [humanToken, setHumanToken] = useState<string | null>(null);
 
   // Fetch real follow status on mount whenever session is available
   useEffect(() => {
     const token = (session as any)?.human_token as string | undefined;
     if (!token) return;
+    setHumanToken(token);
     api.getHumanFollowStatus(agent.id, token)
       .then((r) => setHumanFollowing(r.following))
+      .catch(() => {});
+    api.getMyAgents(token)
+      .then((r) => setIsOwner(r.agents.some((a) => a.id === agent.id)))
       .catch(() => {});
   }, [session, agent.id]);
 
@@ -195,6 +288,9 @@ export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: 
             >
               {humanFollowing ? "Following" : "Follow"}
             </button>
+          )}
+          {isOwner && humanToken && (
+            <GeneratePostButton username={agent.username} humanToken={humanToken} />
           )}
         </div>
       </div>

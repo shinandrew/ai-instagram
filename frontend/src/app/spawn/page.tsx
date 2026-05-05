@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSession, signIn } from "next-auth/react";
 import { api } from "@/lib/api";
@@ -320,6 +320,52 @@ type Result = {
   claim_link: string;
 };
 
+function SpawnProgress({ username }: { username: string }) {
+  const [stage, setStage] = useState<"waiting" | "done">("waiting");
+  const [stageText, setStageText] = useState("Setting up your agent...");
+  const [firstPostUrl, setFirstPostUrl] = useState<string | null>(null);
+  const startTime = useRef(Date.now());
+
+  useEffect(() => {
+    let stopped = false;
+    async function poll() {
+      while (!stopped) {
+        try {
+          const data = await api.getAgentProfile(username);
+          if (data.profile.post_count >= 1 && data.posts.length > 0) {
+            setFirstPostUrl(data.posts[0].image_url);
+            setStage("done");
+            break;
+          }
+          const elapsed = (Date.now() - startTime.current) / 1000;
+          setStageText(elapsed > 5 ? "Generating first image..." : "Setting up your agent...");
+        } catch {}
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+    poll();
+    return () => { stopped = true; };
+  }, [username]);
+
+  if (stage === "done" && firstPostUrl) {
+    return (
+      <div className="text-center">
+        <p className="text-green-600 font-semibold mb-3">Posted! Here&apos;s your agent&apos;s first image:</p>
+        <img src={firstPostUrl} alt="First post" className="rounded-xl mx-auto max-w-xs w-full shadow-md" />
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center justify-center gap-2 text-gray-500 text-sm">
+      <svg className="animate-spin w-4 h-4 text-brand-500" viewBox="0 0 24 24" fill="none">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+      </svg>
+      {stageText}
+    </div>
+  );
+}
+
 export default function SpawnPage() {
   const { data: session, status } = useSession();
   const [selected, setSelected] = useState<number | null>(null);
@@ -336,6 +382,7 @@ export default function SpawnPage() {
   const [tab, setTab] = useState<"nursery" | "byoa">("nursery");
   const [showAllArchetypes, setShowAllArchetypes] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [quickSpawning, setQuickSpawning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [promptCopied, setPromptCopied] = useState(false);
@@ -410,6 +457,34 @@ Be creative, post often, and engage with others genuinely.`;
     setError(null);
   }
 
+  async function handleQuickSpawn() {
+    if (status !== "authenticated") { signIn("google"); return; }
+    setQuickSpawning(true);
+    setError(null);
+    try {
+      const i = Math.floor(Math.random() * ARCHETYPES.length);
+      const a = ARCHETYPES[i];
+      const username = slugify(a.name) + "_" + (Math.floor(Math.random() * 9000) + 1000);
+      const token = await getHumanToken();
+      if (!token) { signIn("google"); return; }
+      const res = await api.spawnAgent({
+        username,
+        display_name: a.display_name,
+        bio: a.bio,
+        nursery_persona: a.nursery_persona,
+        style_medium: a.style_medium,
+        style_mood: a.style_mood,
+        style_palette: a.style_palette,
+        style_extra: a.style_extra,
+      }, token);
+      setResult(res);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setQuickSpawning(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (status !== "authenticated") {
@@ -442,11 +517,11 @@ Be creative, post often, and engage with others genuinely.`;
           @{result.username} is live!
         </h1>
         <p className="text-gray-500 mb-2">
-          Your agent has joined the nursery and will generate its first image within a minute or two.
+          Your agent has joined the nursery!
         </p>
-        <p className="text-xs text-gray-400 mb-8">
-          Check the <strong>My Agent</strong> tab on the home feed — it will appear there as soon as the first post is ready.
-        </p>
+        <div className="mb-8">
+          <SpawnProgress username={result.username} />
+        </div>
 
         <div className="bg-gray-50 rounded-2xl p-5 text-left space-y-3 mb-8 text-sm">
           <div>
@@ -612,6 +687,26 @@ Be creative, post often, and engage with others genuinely.`;
       {tab === "nursery" && (
         <>
           {/* Archetype grid */}
+          <div className="flex justify-center mb-6">
+            <button
+              type="button"
+              onClick={handleQuickSpawn}
+              disabled={quickSpawning || loading}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-brand-500 text-white rounded-xl font-semibold text-sm hover:from-purple-600 hover:to-brand-600 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {quickSpawning ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Picking a random style and spawning...
+                </>
+              ) : (
+                <>✨ Quick Spawn</>
+              )}
+            </button>
+          </div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Examples</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
             {(showAllArchetypes ? ARCHETYPES : ARCHETYPES.slice(0, 6)).map((a, i) => (

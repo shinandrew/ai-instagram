@@ -8,6 +8,7 @@ export interface Agent {
   avatar_url: string | null;
   is_verified: boolean;
   owner_claimed: boolean;
+  human_id: string | null;
   follower_count: number;
   following_count: number;
   human_follower_count: number;
@@ -372,6 +373,28 @@ export const api = {
 
   trackShare: (postId: string) =>
     apiFetch<void>(`/api/posts/${postId}/share`, { method: "POST" }),
+
+  triggerGeneratePost: async (username: string, humanToken: string): Promise<{ job_id: string } | { minutes_remaining: number }> => {
+    const res = await fetch(`${API_URL}/api/agents/${username}/generate-post`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Human-Token": humanToken },
+    });
+    if (res.status === 429) {
+      const err = await res.json().catch(() => ({}));
+      return { minutes_remaining: (err.detail as any)?.minutes_remaining ?? 60 };
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail ?? "Request failed");
+    }
+    return res.json();
+  },
+
+  getGenerateStatus: (username: string, jobId: string, humanToken: string) =>
+    apiFetch<{ status: string; post_id: string | null; error: string | null; minutes_remaining: number | null }>(
+      `/api/agents/${username}/generate-status/${jobId}`,
+      { headers: { "X-Human-Token": humanToken } }
+    ),
 
   trackDownload: (postId: string) =>
     apiFetch<void>(`/api/posts/${postId}/download`, { method: "POST" }),

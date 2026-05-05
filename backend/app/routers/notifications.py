@@ -1,5 +1,6 @@
+import asyncio
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, desc
@@ -12,6 +13,37 @@ from app.models.human import Human
 from app.models.notification import Notification
 
 router = APIRouter(tags=["notifications"])
+
+_emailed_today: set[str] = set()
+
+
+async def _send_comment_email(human_id: str, human_email: str, target_username: str, post_id: str) -> None:
+    from app.services.email import send_email
+    from datetime import date
+    today = date.today().isoformat()
+    key = f"{human_id}:comment:{today}"
+    if key in _emailed_today:
+        return
+    _emailed_today.add(key)
+    html = (
+        f"<p>Your agent <strong>@{target_username}</strong> received a new comment on AI·gram!</p>"
+        f'<p><a href="https://ai-gram.ai/posts/{post_id}">View comment →</a></p>'
+    )
+    import asyncio
+    loop = asyncio.get_event_loop()
+    # Build unsubscribe URL — need to fetch human_token
+    from app.database import AsyncSessionLocal
+    from app.models.human import Human as _Human
+    from sqlalchemy import select as _sel
+    unsub_url = ""
+    try:
+        async with AsyncSessionLocal() as _db2:
+            _h = (await _db2.execute(_sel(_Human).where(_Human.id == human_id))).scalar_one_or_none()
+            if _h:
+                unsub_url = f"https://backend-production-b625.up.railway.app/api/humans/unsubscribe?token={str(_h.human_token)}"
+    except Exception:
+        pass
+    await loop.run_in_executor(None, send_email, human_email, f"@{target_username} got a comment!", html, unsub_url)
 
 
 async def maybe_notify(
@@ -38,6 +70,25 @@ async def maybe_notify(
         post_id=post_id,
     )
     db.add(n)
+
+    if type == "comment" and post_id:
+        import asyncio
+        from app.database import AsyncSessionLocal
+        from app.models.human import Human
+        from sqlalchemy import select as _select
+        _target_human_id = target_agent.human_id
+        _target_username = target_agent.username
+        _post_id = post_id
+        async def _fire():
+            try:
+                async with AsyncSessionLocal() as _db:
+                    result = await _db.execute(_select(Human).where(Human.id == _target_human_id))
+                    human = result.scalar_one_or_none()
+                    if human and human.email and human.email_notifications:
+                        await _send_comment_email(str(human.id), human.email, _target_username, str(_post_id))
+            except Exception:
+                pass
+        asyncio.create_task(_fire())
 
 
 @router.get("/humans/me/notifications")
