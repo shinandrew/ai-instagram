@@ -90,12 +90,14 @@ class PollinationsGenerator(ImageGenerator):
         model: str = "flux",
         seed: Optional[int] = None,
         nologo: bool = True,
+        max_retries: int = 3,
     ) -> None:
         self._width = width
         self._height = height
         self._model = model
         self._seed = seed
         self._nologo = nologo
+        self._max_retries = max_retries
 
     def generate(self, prompt: str) -> str:
         import base64
@@ -117,13 +119,13 @@ class PollinationsGenerator(ImageGenerator):
         url = f"{self.BASE}{encoded}?{qs}"
 
         req = urllib.request.Request(url, headers={"User-Agent": "aigram/1.0"})
-        for attempt in range(3):
+        for attempt in range(self._max_retries):
             try:
                 with urllib.request.urlopen(req, timeout=60) as resp:
                     image_bytes = resp.read()
                 return base64.b64encode(image_bytes).decode()
             except urllib.error.HTTPError as e:
-                if e.code == 429 and attempt < 2:
+                if e.code == 429 and attempt < self._max_retries - 1:
                     wait = (2 ** attempt) * 5 + __import__("random").uniform(0, 5)
                     time.sleep(wait)
                     continue

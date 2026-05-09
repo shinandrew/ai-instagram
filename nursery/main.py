@@ -62,7 +62,7 @@ class _ImageRateLimiter:
             time.sleep(min(wait, 1.0))
 
 
-_image_rate_limiter = _ImageRateLimiter(min_interval_secs=15.0)  # max 4/min across all threads
+_image_rate_limiter = _ImageRateLimiter(min_interval_secs=20.0)  # max 3/min across all threads
 
 
 class _FallbackGenerator:
@@ -76,9 +76,11 @@ class _FallbackGenerator:
 
     generates_url: bool = False
 
-    # Class-level HF availability — shared across all agent threads
+    # Class-level availability — shared across all agent threads
     _hf_blocked_until: float = 0.0
     _hf_block_lock = threading.Lock()
+    _pol_blocked_until: float = 0.0
+    _pol_block_lock = threading.Lock()
 
     def __init__(self, hf_gen, pol_gen) -> None:
         self._hf = hf_gen   # may be None if no HF_TOKEN
@@ -92,6 +94,16 @@ class _FallbackGenerator:
     def _block_hf(cls, seconds: float) -> None:
         with cls._hf_block_lock:
             cls._hf_blocked_until = max(cls._hf_blocked_until, time.time() + seconds)
+
+    @classmethod
+    def _pol_available(cls) -> bool:
+        return time.time() > cls._pol_blocked_until
+
+    @classmethod
+    def _block_pol(cls, seconds: float) -> None:
+        with cls._pol_block_lock:
+            cls._pol_blocked_until = max(cls._pol_blocked_until, time.time() + seconds)
+            logger.info("Pollinations globally blocked for %.0fs", seconds)
 
     def _try_hf(self, prompt: str):
         """Returns (result, err_code) — result is None on rate-limit errors."""
@@ -110,14 +122,21 @@ class _FallbackGenerator:
             raise
 
     def _try_pol(self, prompt: str):
-        """Returns (result, err_code) — result is None on 429."""
+        """Returns (result, err_code) — result is None on 429.
+
+        Uses max_retries=1 so the semaphore is never held during retry sleeps.
+        The _FallbackGenerator.generate() caller handles retry at a higher level.
+        """
         import urllib.error
+        if not self._pol_available():
+            return None, 429
         with _pol_semaphore:
             try:
                 return self._pol.generate(prompt), None
             except urllib.error.HTTPError as e:
                 if e.code == 429:
-                    logger.info("Pollinations rate-limited (429) — trying HuggingFace")
+                    self._block_pol(120)  # back off globally for 2 minutes
+                    logger.info("Pollinations rate-limited (429) — blocked globally for 120s")
                     return None, 429
                 raise
 
@@ -134,9 +153,10 @@ class _FallbackGenerator:
                 return result
 
         # Try Pollinations
-        result, code = self._try_pol(prompt)
-        if result is not None:
-            return result
+        if self._pol_available():
+            result, code = self._try_pol(prompt)
+            if result is not None:
+                return result
 
         # Pollinations also rate-limited — try HF once more if not quota-blocked
         if self._hf and self._hf_available():
@@ -236,7 +256,8 @@ def _run_and_reschedule(agent_id: str) -> None:
     except Exception as exc:
         username = _clients.get(agent_id, {}) and ""  # best-effort
         logger.error("agent %s step crashed: %s", agent_id[:8], exc)
-        wait_secs = 5 * 60
+        import random as _r2
+        wait_secs = int(_r2.uniform(3, 8) * 60)  # jitter 3–8 min to avoid thundering herd
 
     _schedule(agent_id, wait_secs)
 
@@ -300,7 +321,7 @@ def _setup_agent(
         )
     else:
         hf_gen    = HuggingFaceGenerator(token=hf_token) if hf_token else None
-        pol_gen   = PollinationsGenerator()
+        pol_gen   = PollinationsGenerator(max_retries=1)  # semaphore must not be held during retries
         generator = _FallbackGenerator(hf_gen, pol_gen)
         client    = AgentClient(
             api_key   = agent["api_key"],

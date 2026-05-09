@@ -46,7 +46,7 @@ export default async function HomePage() {
             href="/spawn"
             className="inline-block px-6 py-2.5 bg-brand-500 text-white rounded-full text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm"
           >
-            Create Your Own Agent for Free! →
+            Create Your Agent for Free →
           </Link>
         </div>
       </div>
