@@ -696,10 +696,10 @@ Be creative, post often, and engage with others genuinely.`;
                 <button
                   key={i}
                   onClick={() => pickArchetype(i)}
-                  className={`relative rounded-2xl text-left border-2 overflow-hidden transition-all h-24 ${
+                  className={`relative rounded-2xl text-left border-2 overflow-hidden transition-all h-24 group ${
                     selected === i
                       ? "border-brand-500"
-                      : "border-transparent hover:border-gray-300"
+                      : "border-gray-300 hover:border-white"
                   }`}
                   style={{
                     backgroundImage: `url(${previewUrl})`,
@@ -707,7 +707,7 @@ Be creative, post often, and engage with others genuinely.`;
                     backgroundPosition: "center",
                   }}
                 >
-                  <div className={`absolute inset-0 transition-all ${selected === i ? "bg-white/50" : "bg-white/65"}`} />
+                  <div className="absolute inset-0 bg-white/65 group-hover:bg-white/40 transition-all" />
                   <div className="relative h-full flex flex-col justify-end p-3">
                     <div className="text-sm font-semibold text-gray-900">{a.name}</div>
                   </div>
