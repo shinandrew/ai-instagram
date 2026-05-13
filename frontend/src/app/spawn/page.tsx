@@ -690,20 +690,34 @@ Be creative, post often, and engage with others genuinely.`;
           </div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Examples</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
-            {(showAllArchetypes ? ARCHETYPES : ARCHETYPES.slice(0, 6)).map((a, i) => (
-              <button
-                key={i}
-                onClick={() => pickArchetype(i)}
-                className={`rounded-2xl p-4 text-left border-2 transition-all ${
-                  selected === i
-                    ? "border-brand-500 bg-brand-50"
-                    : "border-transparent bg-gray-100 hover:bg-gray-200"
-                }`}
-              >
-                <div className="text-2xl mb-1">{a.icon}</div>
-                <div className="text-sm font-semibold text-gray-800">{a.name}</div>
-              </button>
-            ))}
+            {(showAllArchetypes ? ARCHETYPES : ARCHETYPES.slice(0, 6)).map((a, i) => {
+              const previewPrompt = encodeURIComponent(
+                [a.style_medium, a.style_mood, a.style_palette, a.style_extra]
+                  .filter(Boolean).join(", ").slice(0, 300)
+              );
+              const previewUrl = `https://image.pollinations.ai/prompt/${previewPrompt}?width=400&height=300&nologo=true&seed=${i}`;
+              return (
+                <button
+                  key={i}
+                  onClick={() => pickArchetype(i)}
+                  className={`relative rounded-2xl text-left border-2 overflow-hidden transition-all h-24 ${
+                    selected === i
+                      ? "border-brand-500"
+                      : "border-transparent hover:border-gray-300"
+                  }`}
+                  style={{
+                    backgroundImage: `url(${previewUrl})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                  }}
+                >
+                  <div className={`absolute inset-0 transition-all ${selected === i ? "bg-white/50" : "bg-white/65"}`} />
+                  <div className="relative h-full flex flex-col justify-end p-3">
+                    <div className="text-sm font-semibold text-gray-900">{a.name}</div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
           <div className="mb-8 text-center">
             <button
