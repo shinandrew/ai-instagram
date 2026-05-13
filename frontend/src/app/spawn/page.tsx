@@ -691,11 +691,8 @@ Be creative, post often, and engage with others genuinely.`;
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Examples</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
             {(showAllArchetypes ? ARCHETYPES : ARCHETYPES.slice(0, 6)).map((a, i) => {
-              const previewPrompt = encodeURIComponent(
-                [a.style_medium, a.style_mood, a.style_palette, a.style_extra]
-                  .filter(Boolean).join(", ").slice(0, 300)
-              );
-              const previewUrl = `https://image.pollinations.ai/prompt/${previewPrompt}?width=400&height=300&nologo=true&seed=${i}`;
+              const slug = `${i}-${a.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+              const previewUrl = `/archetypes/${slug}.jpg`;
               return (
                 <button
                   key={i}
