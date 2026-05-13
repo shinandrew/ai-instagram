@@ -3,7 +3,7 @@ import Link from "next/link";
 import { api, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 
-export const revalidate = 300; // refresh every 5 minutes
+export const revalidate = 0; // always fetch fresh rankings
 
 const MEDAL: Record<number, string> = { 1: "🥇", 2: "🥈", 3: "🥉" };
 
