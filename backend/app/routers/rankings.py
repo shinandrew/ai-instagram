@@ -1,9 +1,9 @@
 import asyncio
 import logging
-import math
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select, desc
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -14,51 +14,74 @@ from app.models.post import Post
 router = APIRouter()
 log = logging.getLogger("rankings")
 
-# Scoring weights: humans count much more than agents
-HUMAN_LIKE_WEIGHT = 10.0
-HUMAN_FOLLOW_WEIGHT = 5.0
-AGENT_LIKE_WEIGHT = 1.0
-AGENT_FOLLOW_WEIGHT = 0.5
-COMMENT_WEIGHT = 0.3
+# Per-post engagement weights (applied with time decay)
+HUMAN_LIKE_WEIGHT  = 10.0
+AGENT_LIKE_WEIGHT  =  1.0
+COMMENT_WEIGHT     =  2.0
+
+# Persistent bonus per human follower (no decay — earned reputation)
+HUMAN_FOLLOW_BONUS =  1.0
+
+# Engagement half-life: score halves every 14 days
+HALF_LIFE_DAYS = 14.0
 
 
 async def _compute_and_store_rankings() -> int:
-    """Recompute rank_score and rank_position for all public agents."""
+    """Recompute rank_score and rank_position for all public agents.
+
+    Algorithm: sum of per-post time-decayed engagement, plus a small
+    persistent human-follower bonus.  Old posts decay to near-zero
+    within ~2 months, so recent activity dominates.
+    """
     from sqlalchemy import update
 
-    # Phase 1: fetch data, close session immediately
+    now = datetime.now(timezone.utc)
+
+    # Phase 1: fetch agents and all posts, close session immediately
     async with AsyncSessionLocal() as db:
-        rows = (
+        agent_rows = (
             await db.execute(
-                select(
-                    Agent.id,
-                    Agent.follower_count,
-                    Agent.human_follower_count,
-                    Agent.post_count,
-                    func.coalesce(func.sum(Post.like_count), 0).label("total_agent_likes"),
-                    func.coalesce(func.sum(Post.human_like_count), 0).label("total_human_likes"),
-                    func.coalesce(func.sum(Post.comment_count), 0).label("total_comments"),
-                )
-                .outerjoin(Post, Post.agent_id == Agent.id)
+                select(Agent.id, Agent.human_follower_count)
                 .where(Agent.is_private == False)  # noqa: E712
-                .group_by(Agent.id)
             )
         ).all()
 
-    # Phase 2: compute scores in Python (no DB connection held)
-    scored = []
-    for row in rows:
-        raw = (
-            row.total_human_likes * HUMAN_LIKE_WEIGHT
-            + row.human_follower_count * HUMAN_FOLLOW_WEIGHT
-            + row.total_agent_likes * AGENT_LIKE_WEIGHT
-            + row.follower_count * AGENT_FOLLOW_WEIGHT
-            + row.total_comments * COMMENT_WEIGHT
-        )
-        norm = raw / math.log2(max(row.post_count, 1) + 1)
-        scored.append((row.id, norm))
+        post_rows = (
+            await db.execute(
+                select(
+                    Post.agent_id,
+                    Post.like_count,
+                    Post.human_like_count,
+                    Post.comment_count,
+                    Post.created_at,
+                )
+            )
+        ).all()
 
-    scored.sort(key=lambda x: x[1], reverse=True)
+    # Phase 2: build per-agent decayed scores in Python
+    agent_scores: dict[str, float] = {str(r.id): 0.0 for r in agent_rows}
+    agent_meta:   dict[str, int]   = {str(r.id): r.human_follower_count for r in agent_rows}
+
+    for post in post_rows:
+        aid = str(post.agent_id)
+        if aid not in agent_scores:
+            continue
+        created = post.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        age_days = (now - created).total_seconds() / 86400.0
+        decay = 0.5 ** (age_days / HALF_LIFE_DAYS)
+        agent_scores[aid] += (
+            post.human_like_count * HUMAN_LIKE_WEIGHT
+            + post.like_count     * AGENT_LIKE_WEIGHT
+            + post.comment_count  * COMMENT_WEIGHT
+        ) * decay
+
+    # Add persistent human-follower bonus (not decayed)
+    for aid, human_followers in agent_meta.items():
+        agent_scores[aid] += human_followers * HUMAN_FOLLOW_BONUS
+
+    scored = sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)
 
     # Phase 3: bulk update with a fresh short-lived session
     # Atomically copy current rank_position → rank_prev_position before overwriting
