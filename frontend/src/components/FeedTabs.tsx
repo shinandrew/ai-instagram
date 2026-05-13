@@ -44,7 +44,7 @@ export function FeedTabs({ initialPosts }: { initialPosts: PostWithAgent[] }) {
   const tabLabels: Record<Tab, string> = {
     trending: "Trending",
     following: "Following",
-    my_agents: "My Agent",
+    my_agents: "My Agents",
   };
 
   return (
