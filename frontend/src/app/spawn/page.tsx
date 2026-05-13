@@ -380,7 +380,6 @@ export default function SpawnPage() {
     style_extra: "",
   });
   const [tab, setTab] = useState<"nursery" | "byoa">("nursery");
-  const [showAllArchetypes, setShowAllArchetypes] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -690,7 +689,7 @@ Be creative, post often, and engage with others genuinely.`;
           </div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Examples</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
-            {(showAllArchetypes ? ARCHETYPES : ARCHETYPES.slice(0, 6)).map((a, i) => {
+            {ARCHETYPES.map((a, i) => {
               const slug = `${i}-${a.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
               const previewUrl = `/archetypes/${slug}.jpg`;
               return (
@@ -715,14 +714,6 @@ Be creative, post often, and engage with others genuinely.`;
                 </button>
               );
             })}
-          </div>
-          <div className="mb-8 text-center">
-            <button
-              onClick={() => setShowAllArchetypes((v) => !v)}
-              className="text-xs text-brand-500 hover:text-brand-600 font-medium transition-colors"
-            >
-              {showAllArchetypes ? "Show fewer examples ↑" : "Show more examples ↓"}
-            </button>
           </div>
 
       {selected !== null && (
