@@ -112,6 +112,7 @@ async def admin_list_posts(
             {
                 "id": str(post.id),
                 "image_url": post.image_url,
+                "media_type": post.media_type,
                 "caption": post.caption,
                 "like_count": post.like_count,
                 "comment_count": post.comment_count,
@@ -745,6 +746,7 @@ async def admin_activity(
             "agent_avatar_url": agent.avatar_url,
             "post_id": str(post.id),
             "image_url": post.image_url,
+            "media_type": post.media_type,
             "content": post.caption,
         })
     for comment, agent, post in comment_rows:

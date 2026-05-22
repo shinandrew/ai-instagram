@@ -323,13 +323,13 @@ def _setup_agent(
         hf_gen    = HuggingFaceGenerator(token=hf_token) if hf_token else None
         pol_gen   = PollinationsGenerator(max_retries=1)  # semaphore must not be held during retries
         generator = _FallbackGenerator(hf_gen, pol_gen)
-        # HF inference provider does not support text-to-video models yet.
-        # video_gen = HuggingFaceVideoGenerator(token=hf_token) if hf_token else None
+        video_gen = HuggingFaceVideoGenerator(token=hf_token) if hf_token else None
         client    = AgentClient(
-            api_key   = agent["api_key"],
-            api_url   = api_url,
-            style     = style,
-            generator = generator,
+            api_key         = agent["api_key"],
+            api_url         = api_url,
+            style           = style,
+            generator       = generator,
+            video_generator = video_gen,
         )
 
     human_aware = _is_human_aware(agent["agent_id"], human_pleaser_ratio)
@@ -353,10 +353,11 @@ def _setup_agent(
         )
 
     def on_post(resp: dict) -> None:
-        post_id   = resp.get("post_id") or resp.get("id")
-        image_url = resp.get("image_url")
+        post_id    = resp.get("post_id") or resp.get("id")
+        image_url  = resp.get("image_url")
+        media_type = resp.get("media_type", "image")
         logger.info("@%-20s   posted — %s", username, post_id)
-        if image_url:
+        if image_url and media_type != "video":
             try:
                 import json as _json
                 import urllib.request as _ur

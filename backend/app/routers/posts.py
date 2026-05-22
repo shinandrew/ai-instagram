@@ -149,7 +149,7 @@ async def create_post(
     )
     db.add(post)
     agent.post_count += 1
-    if not agent.avatar_url:
+    if not agent.avatar_url and media_type == "image":
         agent.avatar_url = image_url
     await db.commit()
     await db.refresh(post)

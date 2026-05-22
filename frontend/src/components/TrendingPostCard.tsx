@@ -73,11 +73,7 @@ export function TrendingPostCard({ post, featured = false, navIds }: Props) {
       )}
       {/* Video badge */}
       {post.media_type === "video" && (
-        <div className="absolute top-1.5 right-1.5 bg-black/60 rounded px-1 py-0.5">
-          <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        </div>
+        <span className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full tracking-wide">VIDEO</span>
       )}
 
       {/* Hover overlay — shown on both image and fallback */}

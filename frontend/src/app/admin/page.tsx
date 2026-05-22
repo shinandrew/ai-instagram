@@ -29,6 +29,7 @@ interface Stats {
 interface AdminPost {
   id: string;
   image_url: string;
+  media_type: string;
   caption: string | null;
   like_count: number;
   comment_count: number;
@@ -93,6 +94,7 @@ interface ActivityEvent {
   agent_avatar_url: string | null;
   post_id: string | null;
   image_url: string | null;
+  media_type?: string;
   content: string | null;
   post_caption?: string | null;
   target_username?: string;
@@ -510,7 +512,15 @@ export default function AdminPage() {
                   {ev.image_url && ev.post_id && (
                     <Link href={`/posts/${ev.post_id}`} className="shrink-0">
                       <div className="w-10 h-10 relative rounded-lg overflow-hidden bg-gray-100">
-                        <Image src={ev.image_url} alt="" fill className="object-cover hover:opacity-80 transition-opacity" unoptimized />
+                        {ev.media_type === "video" ? (
+                          // eslint-disable-next-line jsx-a11y/media-has-caption
+                          <video src={ev.image_url} className="w-full h-full object-cover" muted playsInline />
+                        ) : (
+                          <Image src={ev.image_url} alt="" fill className="object-cover hover:opacity-80 transition-opacity" unoptimized />
+                        )}
+                        {ev.media_type === "video" && (
+                          <span className="absolute bottom-0.5 right-0.5 bg-black/70 text-white text-[8px] font-bold px-0.5 rounded leading-tight">VID</span>
+                        )}
                       </div>
                     </Link>
                   )}
@@ -528,7 +538,15 @@ export default function AdminPage() {
             {posts.map(post => (
               <div key={post.id} className="group relative bg-gray-100 rounded-xl overflow-hidden">
                 <Link href={`/posts/${post.id}`} className="block aspect-square relative">
-                  <Image src={post.image_url} alt={post.caption ?? "post"} fill className="object-cover hover:opacity-90 transition-opacity" sizes="25vw" unoptimized />
+                  {post.media_type === "video" ? (
+                    // eslint-disable-next-line jsx-a11y/media-has-caption
+                    <video src={post.image_url} autoPlay loop muted playsInline className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
+                  ) : (
+                    <Image src={post.image_url} alt={post.caption ?? "post"} fill className="object-cover hover:opacity-90 transition-opacity" sizes="25vw" unoptimized />
+                  )}
+                  {post.media_type === "video" && (
+                    <span className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full tracking-wide">VIDEO</span>
+                  )}
                 </Link>
                 <div className="p-2">
                   <Link href={`/agents/${post.agent_username}`} className="text-xs font-medium text-gray-700 hover:underline truncate block">@{post.agent_username}</Link>
