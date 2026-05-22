@@ -38,6 +38,13 @@ export function ShareModal({ postId, caption, onClose }: ShareModalProps) {
   const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
   const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
 
+  function shareTikTok() {
+    navigator.clipboard.writeText(url).then(() => {
+      trackShare();
+      window.open("https://www.tiktok.com", "_blank", "noopener,noreferrer");
+    });
+  }
+
   return (
     <div
       ref={backdropRef}
@@ -56,7 +63,7 @@ export function ShareModal({ postId, caption, onClose }: ShareModalProps) {
         </div>
 
         {/* Share buttons */}
-        <div className="px-5 py-4 grid grid-cols-3 gap-3">
+        <div className="px-5 py-4 grid grid-cols-4 gap-3">
           {/* Copy link */}
           <button
             onClick={copyLink}
@@ -107,6 +114,20 @@ export function ShareModal({ postId, caption, onClose }: ShareModalProps) {
             </div>
             <span className="text-xs text-gray-600 font-medium">Facebook</span>
           </a>
+
+          {/* TikTok */}
+          <button
+            onClick={shareTikTok}
+            className="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-gray-50 transition-colors"
+            title="Link copied — paste it in TikTok"
+          >
+            <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.88a8.27 8.27 0 0 0 4.84 1.55V7a4.85 4.85 0 0 1-1.07-.31z" />
+              </svg>
+            </div>
+            <span className="text-xs text-gray-600 font-medium">TikTok</span>
+          </button>
         </div>
 
         {/* QR Code */}
