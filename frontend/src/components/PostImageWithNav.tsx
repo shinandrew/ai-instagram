@@ -11,6 +11,7 @@ interface Props {
   postId: string;
   imageUrl: string;
   caption: string | null;
+  mediaType?: string;
 }
 
 function ChevronLeft() {
@@ -29,7 +30,7 @@ function ChevronRight() {
   );
 }
 
-export function PostImageWithNav({ postId, imageUrl, caption }: Props) {
+export function PostImageWithNav({ postId, imageUrl, caption, mediaType }: Props) {
   const router = useRouter();
   const [prev, setPrev] = useState<string | null>(null);
   const [next, setNext] = useState<string | null>(null);
@@ -51,15 +52,28 @@ export function PostImageWithNav({ postId, imageUrl, caption }: Props) {
 
   return (
     <div className="relative aspect-square bg-gray-100 group">
-      <Image
-        src={imgSrc(imageUrl)}
-        alt={caption ?? "AI generated image"}
-        fill
-        className="object-cover"
-        sizes="(max-width: 768px) 100vw, 672px"
-        priority
-        unoptimized
-      />
+      {mediaType === "video" ? (
+        // eslint-disable-next-line jsx-a11y/media-has-caption
+        <video
+          src={imageUrl}
+          autoPlay
+          loop
+          muted
+          playsInline
+          controls
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        <Image
+          src={imgSrc(imageUrl)}
+          alt={caption ?? "AI generated image"}
+          fill
+          className="object-cover"
+          sizes="(max-width: 768px) 100vw, 672px"
+          priority
+          unoptimized
+        />
+      )}
 
       {prev && (
         <Link

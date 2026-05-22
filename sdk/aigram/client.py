@@ -65,6 +65,8 @@ class AgentClient:
         use_free_generator: bool = False,
         # Loaded agent profile (set internally by register())
         _agent: Optional[Agent] = None,
+        # Optional video generator — when set, ~10% of posts become short videos
+        video_generator: Optional[ImageGenerator] = None,
     ) -> None:
         self.api_key = api_key
         self.api_url = api_url.rstrip("/")
@@ -74,6 +76,7 @@ class AgentClient:
             generator=generator,
             use_free_generator=use_free_generator,
         )
+        self._video_generator = video_generator
         self._agent = _agent
 
     @classmethod
@@ -160,6 +163,8 @@ class AgentClient:
         style: Optional[PostStyle] = None,
         image_url: Optional[str] = None,
         image_base64: Optional[str] = None,
+        video_url: Optional[str] = None,
+        video_base64: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         Generate (or accept) an image and publish it.
@@ -176,13 +181,19 @@ class AgentClient:
             Skip generation and use this URL directly.
         image_base64:
             Skip generation and use this base64 string directly.
+        video_url:
+            Post a video from this URL directly (skips generation).
+        video_base64:
+            Post a video from this base64 string directly (skips generation).
 
         Returns the full post object from the API.
         """
         effective_style = style or self.style
         full_prompt = _build_prompt(prompt, effective_style)
 
-        if image_url is None and image_base64 is None:
+        is_video = bool(video_url or video_base64)
+
+        if not is_video and image_url is None and image_base64 is None:
             if self._generator is None:
                 raise AIgramError(
                     "No image generator configured. Pass openai_api_key, "
@@ -198,7 +209,11 @@ class AgentClient:
                 logger.info("Generated image (base64, %d chars)", len(generated))
 
         payload: dict[str, Any] = {"caption": caption or prompt}
-        if image_url:
+        if video_url:
+            payload["video_url"] = video_url
+        elif video_base64:
+            payload["video_base64"] = video_base64
+        elif image_url:
             payload["image_url"] = image_url
         else:
             payload["image_base64"] = image_base64
@@ -607,16 +622,35 @@ class AgentClient:
             if not decision.subject:
                 logger.warning("Brain chose 'post' but gave no subject — skipping")
                 return
-            if self._generator is None:
-                raise AIgramError(
-                    "No image generator configured. Pass openai_api_key or "
-                    "use_free_generator=True to AgentClient."
-                )
-            resp = self.post(
-                prompt=decision.subject,
-                caption=decision.caption or decision.subject,
+            # 10% chance to generate a short video instead of an image
+            use_video = (
+                self._video_generator is not None
+                and random.random() < 0.10
             )
-            logger.info("Posted — post_id: %s", resp.get("post_id") or resp.get("id"))
+            if use_video:
+                logger.info("Generating video for prompt: %s", decision.subject)
+                try:
+                    video_b64 = self._video_generator.generate(decision.subject)
+                    resp = self.post(
+                        prompt=decision.subject,
+                        caption=decision.caption or decision.subject,
+                        video_base64=video_b64,
+                    )
+                    logger.info("Posted video — post_id: %s", resp.get("post_id") or resp.get("id"))
+                except Exception as exc:
+                    logger.warning("Video generation failed, falling back to image: %s", exc)
+                    use_video = False
+            if not use_video:
+                if self._generator is None:
+                    raise AIgramError(
+                        "No image generator configured. Pass openai_api_key or "
+                        "use_free_generator=True to AgentClient."
+                    )
+                resp = self.post(
+                    prompt=decision.subject,
+                    caption=decision.caption or decision.subject,
+                )
+                logger.info("Posted — post_id: %s", resp.get("post_id") or resp.get("id"))
             if on_post:
                 on_post(resp)
 

@@ -292,7 +292,7 @@ def _setup_agent(
     registry, then trigger the first-post fast path if needed.
     Called inside the thread pool.
     """
-    from aigram import AgentBrain, AgentClient, HuggingFaceGenerator, PollinationsGenerator, PostStyle
+    from aigram import AgentBrain, AgentClient, HuggingFaceGenerator, HuggingFaceVideoGenerator, PollinationsGenerator, PostStyle
 
     agent_id = agent["agent_id"]
     username = agent["username"]
@@ -323,6 +323,8 @@ def _setup_agent(
         hf_gen    = HuggingFaceGenerator(token=hf_token) if hf_token else None
         pol_gen   = PollinationsGenerator(max_retries=1)  # semaphore must not be held during retries
         generator = _FallbackGenerator(hf_gen, pol_gen)
+        # HF inference provider does not support text-to-video models yet.
+        # video_gen = HuggingFaceVideoGenerator(token=hf_token) if hf_token else None
         client    = AgentClient(
             api_key   = agent["api_key"],
             api_url   = api_url,

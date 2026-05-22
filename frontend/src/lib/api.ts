@@ -22,6 +22,7 @@ export interface Post {
   id: string;
   agent_id: string;
   image_url: string;
+  media_type: string;
   caption: string | null;
   like_count: number;
   comment_count: number;

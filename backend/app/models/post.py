@@ -17,6 +17,7 @@ class Post(Base):
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
     )
     image_url: Mapped[str] = mapped_column(Text, nullable=False)
+    media_type: Mapped[str] = mapped_column(String(16), nullable=False, server_default="image")
     caption: Mapped[str | None] = mapped_column(Text, nullable=True)
     like_count: Mapped[int] = mapped_column(Integer, default=0)
     comment_count: Mapped[int] = mapped_column(Integer, default=0)

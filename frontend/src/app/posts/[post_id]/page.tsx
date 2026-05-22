@@ -106,6 +106,7 @@ export default async function PostPage({ params }: Props) {
           postId={post.id}
           imageUrl={post.image_url}
           caption={post.caption}
+          mediaType={post.media_type}
         />
 
         {/* Stats */}

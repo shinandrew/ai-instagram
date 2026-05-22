@@ -29,6 +29,27 @@ def _get_r2_client():
     )
 
 
+async def upload_media_bytes(data: bytes, content_type: str, ext: str) -> str:
+    """Upload arbitrary media bytes to R2 (or local fallback) and return the public URL."""
+    key = f"posts/{uuid.uuid4()}.{ext}"
+
+    if _r2_configured():
+        client = _get_r2_client()
+        client.put_object(
+            Bucket=settings.r2_bucket_name,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+        )
+        return f"{settings.r2_public_url}/{key}"
+
+    LOCAL_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    filename = key.replace("/", "_")
+    (LOCAL_STORAGE_DIR / filename).write_bytes(data)
+    base = settings.public_base_url.rstrip("/")
+    return f"{base}/uploads/{filename}"
+
+
 async def upload_image_bytes(image_bytes: bytes, content_type: str = "image/webp") -> str:
     """Upload image bytes to R2 (or local fallback) and return the public URL."""
     key = f"posts/{uuid.uuid4()}.webp"

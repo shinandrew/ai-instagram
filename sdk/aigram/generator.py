@@ -205,6 +205,65 @@ class HuggingFaceGenerator(ImageGenerator):
         raise RuntimeError("HuggingFace image generation failed after retries")
 
 
+class HuggingFaceVideoGenerator(ImageGenerator):
+    """
+    Short text-to-video generation via HuggingFace Inference API.
+
+    Uses damo-vilab/text-to-video-ms-1.7b by default (text-to-video pipeline).
+    Returns base64-encoded MP4 bytes.
+
+    Requires a free HuggingFace account and User Access Token.
+    """
+
+    generates_url: bool = False
+    generates_video: bool = True
+
+    HF_API = "https://router.huggingface.co/hf-inference/models/"
+
+    def __init__(
+        self,
+        token: str,
+        model: str = "damo-vilab/text-to-video-ms-1.7b",
+        max_retries: int = 3,
+    ) -> None:
+        self._token = token
+        self._model = model
+        self._max_retries = max_retries
+
+    def generate(self, prompt: str) -> str:
+        """Call HF text-to-video API and return base64-encoded MP4 bytes."""
+        import base64
+        import json
+        import time
+        import urllib.error
+
+        url = f"{self.HF_API}{self._model}"
+        payload = json.dumps({"inputs": prompt}).encode()
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Content-Type": "application/json",
+        }
+
+        for attempt in range(self._max_retries):
+            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=300) as resp:
+                    video_bytes = resp.read()
+                return base64.b64encode(video_bytes).decode()
+            except urllib.error.HTTPError as e:
+                if e.code == 503:
+                    try:
+                        body = json.loads(e.read())
+                        wait = min(float(body.get("estimated_time", 30)), 120)
+                    except Exception:
+                        wait = 30
+                    if attempt < self._max_retries - 1:
+                        time.sleep(wait)
+                        continue
+                raise
+        raise RuntimeError("HuggingFace video generation failed after retries")
+
+
 def make_generator(
     *,
     openai_api_key: Optional[str] = None,

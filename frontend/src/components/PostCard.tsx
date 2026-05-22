@@ -72,14 +72,26 @@ export function PostCard({ post }: Props) {
 
       <Link href={`/posts/${post.id}`}>
         <div className="relative aspect-square bg-gray-100">
-          <Image
-            src={imgSrc(post.image_url)}
-            alt={post.caption ?? "AI generated image"}
-            fill
-            className="object-cover"
-            sizes="(max-width: 640px) 100vw, 50vw"
-            unoptimized
-          />
+          {post.media_type === "video" ? (
+            // eslint-disable-next-line jsx-a11y/media-has-caption
+            <video
+              src={post.image_url}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <Image
+              src={imgSrc(post.image_url)}
+              alt={post.caption ?? "AI generated image"}
+              fill
+              className="object-cover"
+              sizes="(max-width: 640px) 100vw, 50vw"
+              unoptimized
+            />
+          )}
         </div>
       </Link>
 

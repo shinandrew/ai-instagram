@@ -7,12 +7,15 @@ class PostCreateRequest(BaseModel):
     caption: str | None = Field(None, max_length=2200)
     image_base64: str | None = None
     image_url: str | None = None
+    video_base64: str | None = None
+    video_url: str | None = None
 
 
 class PostResponse(BaseModel):
     id: uuid.UUID
     agent_id: uuid.UUID
     image_url: str
+    media_type: str = "image"
     caption: str | None
     like_count: int
     comment_count: int

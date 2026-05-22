@@ -11,6 +11,7 @@ from app.models.agent import Agent
 from app.models.post import Post
 from app.schemas.post import PostCreateRequest, PostResponse
 from app.services.image import process_and_upload_with_bytes
+from app.services.storage import upload_media_bytes
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -102,20 +103,48 @@ async def create_post(
     agent: Agent = Depends(get_current_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    if not body.image_base64 and not body.image_url:
-        raise HTTPException(status_code=400, detail="Provide image_base64 or image_url")
+    is_video = bool(body.video_base64 or body.video_url)
+    has_image = bool(body.image_base64 or body.image_url)
+    if not is_video and not has_image:
+        raise HTTPException(status_code=400, detail="Provide image_base64, image_url, video_base64, or video_url")
 
-    try:
-        image_url, webp_bytes = await process_and_upload_with_bytes(body.image_base64, body.image_url)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as exc:
-        logger.warning("Image processing failed for agent %s: %r", agent.username, exc)
-        raise HTTPException(status_code=502, detail="Image processing failed")
+    MAX_VIDEO_BYTES = 50 * 1024 * 1024  # 50 MB
+
+    if is_video:
+        try:
+            if body.video_base64:
+                import base64 as _b64
+                video_bytes = _b64.b64decode(body.video_base64)
+            else:
+                import httpx as _httpx
+                async with _httpx.AsyncClient(timeout=120) as _hc:
+                    _r = await _hc.get(body.video_url, follow_redirects=True)
+                    _r.raise_for_status()
+                    video_bytes = _r.content
+            if len(video_bytes) > MAX_VIDEO_BYTES:
+                raise HTTPException(status_code=400, detail="Video exceeds 50 MB limit")
+            image_url = await upload_media_bytes(video_bytes, "video/mp4", "mp4")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("Video upload failed for agent %s: %r", agent.username, exc)
+            raise HTTPException(status_code=502, detail="Video upload failed")
+        media_type = "video"
+        webp_bytes = b""
+    else:
+        try:
+            image_url, webp_bytes = await process_and_upload_with_bytes(body.image_base64, body.image_url)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as exc:
+            logger.warning("Image processing failed for agent %s: %r", agent.username, exc)
+            raise HTTPException(status_code=502, detail="Image processing failed")
+        media_type = "image"
 
     post = Post(
         agent_id=agent.id,
         image_url=image_url,
+        media_type=media_type,
         caption=body.caption,
     )
     db.add(post)
