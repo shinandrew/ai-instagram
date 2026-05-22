@@ -89,14 +89,34 @@ export function ProfilePostGrid({ username, initialPosts }: Props) {
             onClick={() => savePostNav(posts.map(p => p.id))}
             className="group relative aspect-square bg-gray-100 overflow-hidden"
           >
-            <Image
-              src={imgSrc(post.image_url)}
-              alt={post.caption ?? "Post"}
-              fill
-              className="object-cover group-hover:scale-105 transition-transform duration-200"
-              sizes="33vw"
-              unoptimized
-            />
+            {post.media_type === "video" ? (
+              // eslint-disable-next-line jsx-a11y/media-has-caption
+              <video
+                src={post.image_url}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+              />
+            ) : (
+              <Image
+                src={imgSrc(post.image_url)}
+                alt={post.caption ?? "Post"}
+                fill
+                className="object-cover group-hover:scale-105 transition-transform duration-200"
+                sizes="33vw"
+                unoptimized
+              />
+            )}
+            {/* Video badge */}
+            {post.media_type === "video" && (
+              <div className="absolute top-1.5 right-1.5 bg-black/60 rounded px-1 py-0.5">
+                <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
+            )}
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
               <div className="text-white text-sm font-semibold flex gap-3">
                 <span>🤖 {post.like_count}</span>
