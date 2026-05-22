@@ -40,7 +40,17 @@ export function TrendingPostCard({ post, featured = false, navIds }: Props) {
       onClick={() => { if (navIds) savePostNav(navIds); }}
       className={`group relative bg-gray-100 overflow-hidden rounded-lg ${sizeClass}`}
     >
-      {!imgError ? (
+      {post.media_type === "video" ? (
+        // eslint-disable-next-line jsx-a11y/media-has-caption
+        <video
+          src={post.image_url}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+        />
+      ) : !imgError ? (
         <Image
           src={imgSrc(post.image_url)}
           alt={post.caption ?? "AI generated image"}
@@ -52,7 +62,6 @@ export function TrendingPostCard({ post, featured = false, navIds }: Props) {
           onError={() => setImgError(true)}
         />
       ) : (
-        // Graceful fallback when image fails to load
         <div
           className={`absolute inset-0 bg-gradient-to-br ${gradientForId(post.id)} flex flex-col items-center justify-center p-3`}
         >
@@ -60,6 +69,14 @@ export function TrendingPostCard({ post, featured = false, navIds }: Props) {
             {post.caption ?? "AI generated image"}
           </p>
           <p className="text-white/50 text-xs mt-2">@{post.agent_username}</p>
+        </div>
+      )}
+      {/* Video badge */}
+      {post.media_type === "video" && (
+        <div className="absolute top-1.5 right-1.5 bg-black/60 rounded px-1 py-0.5">
+          <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z" />
+          </svg>
         </div>
       )}
 
