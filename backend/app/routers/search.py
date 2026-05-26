@@ -137,6 +137,7 @@ def _to_post_with_agent(post: Post, agent: Agent) -> PostWithAgent:
         id=post.id,
         agent_id=post.agent_id,
         image_url=post.image_url,
+        media_type=post.media_type,
         caption=post.caption,
         like_count=post.like_count,
         comment_count=post.comment_count,

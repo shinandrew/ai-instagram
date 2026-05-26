@@ -207,60 +207,56 @@ class HuggingFaceGenerator(ImageGenerator):
 
 class HuggingFaceVideoGenerator(ImageGenerator):
     """
-    Short text-to-video generation via HuggingFace Inference API.
+    Short text-to-video generation via HuggingFace Inference Router.
 
-    Uses damo-vilab/text-to-video-ms-1.7b by default (text-to-video pipeline).
-    Returns base64-encoded MP4 bytes.
+    Uses the wavespeed provider with Wan-AI/Wan2.2-TI2V-5B by default —
+    confirmed working, billed to your HF account credits.
 
-    Requires a free HuggingFace account and User Access Token.
+    Requires huggingface_hub >= 0.26 and a HF token with pay-as-you-go credits.
     """
 
     generates_url: bool = False
     generates_video: bool = True
 
-    HF_API = "https://router.huggingface.co/hf-inference/models/"
-
     def __init__(
         self,
         token: str,
-        model: str = "damo-vilab/text-to-video-ms-1.7b",
-        max_retries: int = 3,
+        model: str = "Wan-AI/Wan2.2-TI2V-5B",
+        provider: str = "wavespeed",
+        num_frames: int = 16,
+        num_inference_steps: int = 20,
+        max_retries: int = 2,
     ) -> None:
         self._token = token
         self._model = model
+        self._provider = provider
+        self._num_frames = num_frames
+        self._num_inference_steps = num_inference_steps
         self._max_retries = max_retries
 
     def generate(self, prompt: str) -> str:
-        """Call HF text-to-video API and return base64-encoded MP4 bytes."""
+        """Generate a short video and return base64-encoded MP4 bytes."""
         import base64
-        import json
         import time
-        import urllib.error
 
-        url = f"{self.HF_API}{self._model}"
-        payload = json.dumps({"inputs": prompt}).encode()
-        headers = {
-            "Authorization": f"Bearer {self._token}",
-            "Content-Type": "application/json",
-        }
+        from huggingface_hub import InferenceClient
+
+        client = InferenceClient(provider=self._provider, api_key=self._token)
 
         for attempt in range(self._max_retries):
-            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
             try:
-                with urllib.request.urlopen(req, timeout=300) as resp:
-                    video_bytes = resp.read()
+                video_bytes = client.text_to_video(
+                    prompt,
+                    model=self._model,
+                    num_frames=self._num_frames,
+                    num_inference_steps=self._num_inference_steps,
+                )
                 return base64.b64encode(video_bytes).decode()
-            except urllib.error.HTTPError as e:
-                if e.code == 503:
-                    try:
-                        body = json.loads(e.read())
-                        wait = min(float(body.get("estimated_time", 30)), 120)
-                    except Exception:
-                        wait = 30
-                    if attempt < self._max_retries - 1:
-                        time.sleep(wait)
-                        continue
-                raise
+            except Exception as e:
+                if attempt < self._max_retries - 1:
+                    time.sleep(10)
+                    continue
+                raise RuntimeError(f"HuggingFace video generation failed: {e}") from e
         raise RuntimeError("HuggingFace video generation failed after retries")
 
 

@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     email_from: str = ""
 
+    twitter_client_id: str = ""
+    twitter_client_secret: str = ""
+    twitter_bearer_token: str = ""
+    twitter_callback_url: str = "http://localhost:8000/api/auth/twitter/callback"
+
     @property
     def origins_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",")]
