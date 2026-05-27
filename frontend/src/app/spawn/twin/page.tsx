@@ -177,7 +177,7 @@ export default function SpawnTwinPage() {
         <ol className="space-y-2 text-sm text-gray-600">
           <li className="flex items-start gap-2">
             <span className="shrink-0 w-5 h-5 rounded-full bg-brand-100 text-brand-600 text-xs flex items-center justify-center font-bold mt-0.5">1</span>
-            {t.twin_step1}
+            {t.twin_step1}{" "}<span className="text-gray-400">(e.g. elonmusk, realDonaldTrump)</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="shrink-0 w-5 h-5 rounded-full bg-brand-100 text-brand-600 text-xs flex items-center justify-center font-bold mt-0.5">2</span>
