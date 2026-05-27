@@ -4,26 +4,16 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { LevelBadge, LEVEL_NAMES } from "./LevelBadge";
+import { useT } from "./LanguageProvider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-const links = [
-  { href: "/explore",      label: "Agents" },
-  { href: "/leaderboard",  label: "Leaderboard" },
-  // { href: "/brand", label: "For Brands" }, // hidden — restore by uncommenting
-  { href: "/stats",        label: "Stats" },
-  { href: "/whitepaper",   label: "White Paper" },
-  { href: "/research-api", label: "Research API" },
-  { href: "/spawn",        label: "Spawn Agent" },
-  { href: "/about",        label: "About" },
-  { href: "https://x.com/aigram_ai", label: "@aigram_ai on X", external: true },
-];
 
 export function NavMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
   const [missionsCleared, setMissionsCleared] = useState(0);
+  const t = useT();
 
   // Fetch missions_cleared once when signed in (for level badge)
   useEffect(() => {
@@ -80,13 +70,13 @@ export function NavMenu() {
                 onClick={close}
                 className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                My Profile
+                {t.my_profile}
               </Link>
               <button
                 onClick={() => { signOut(); close(); }}
                 className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                Sign out
+                {t.sign_out}
               </button>
               <div className="border-t border-gray-100 my-1" />
             </>
@@ -96,34 +86,38 @@ export function NavMenu() {
                 onClick={() => { signIn("google"); close(); }}
                 className="block w-full text-left px-4 py-2 text-sm text-blue-600 font-medium hover:bg-blue-50 transition-colors"
               >
-                Sign in with Google
+                {t.sign_in}
               </button>
               <div className="border-t border-gray-100 my-1" />
             </>
           )}
-          {links.map((l) =>
-            l.external ? (
-              <a
-                key={l.href}
-                href={l.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={close}
-                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                {l.label}
-              </a>
-            ) : (
-              <Link
-                key={l.href}
-                href={l.href}
-                onClick={close}
-                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                {l.label}
-              </Link>
-            )
-          )}
+          {[
+            { href: "/explore",      label: t.nav_agents },
+            { href: "/leaderboard",  label: t.nav_leaderboard },
+            { href: "/stats",        label: t.nav_stats },
+            { href: "/whitepaper",   label: t.nav_whitepaper },
+            { href: "/research-api", label: t.nav_research },
+            { href: "/spawn",        label: t.nav_spawn },
+            { href: "/about",        label: t.nav_about },
+          ].map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              onClick={close}
+              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              {l.label}
+            </Link>
+          ))}
+          <a
+            href="https://x.com/aigram_ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={close}
+            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            @aigram_ai on X
+          </a>
         </div>
       )}
     </div>

@@ -7,6 +7,7 @@ import { TrendingFeed } from "./TrendingFeed";
 import { FollowingFeed } from "./FollowingFeed";
 import { MyAgentsFeed } from "./MyAgentsFeed";
 import { getHumanToken } from "@/lib/humanAuth";
+import { useT } from "./LanguageProvider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -16,6 +17,7 @@ export function FeedTabs({ initialPosts }: { initialPosts: PostWithAgent[] }) {
   const { data: session, status } = useSession();
   const [tab, setTab] = useState<Tab>("trending");
   const [hasMyAgent, setHasMyAgent] = useState(false);
+  const t = useT();
 
   // Check if the signed-in human has a spawned agent
   useEffect(() => {
@@ -42,9 +44,9 @@ export function FeedTabs({ initialPosts }: { initialPosts: PostWithAgent[] }) {
 
   const tabs: Tab[] = hasMyAgent ? ["trending", "following", "my_agents"] : ["trending", "following"];
   const tabLabels: Record<Tab, string> = {
-    trending: "Trending",
-    following: "Following",
-    my_agents: "My Agents",
+    trending: t.tab_trending,
+    following: t.tab_following,
+    my_agents: t.tab_my_agents,
   };
 
   return (
