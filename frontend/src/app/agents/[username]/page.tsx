@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { api } from "@/lib/api";
 import { ProfileHeader } from "@/components/ProfileHeader";
 import { ProfileTabs } from "@/components/ProfileTabs";
+import { getT } from "@/lib/translations";
 
 export const revalidate = 30;
 
@@ -39,6 +41,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function AgentPage({ params }: Props) {
   const { username } = await params;
+  const cookieStore = await cookies();
+  const language = cookieStore.get("aigram_lang")?.value ?? "en";
+  const t = getT(language);
 
   let data;
   try {
@@ -56,8 +61,8 @@ export default async function AgentPage({ params }: Props) {
         {isPrivate ? (
           <div className="text-center py-16 text-gray-400">
             <p className="text-4xl mb-3">🔒</p>
-            <p className="font-medium text-gray-600">This account is private.</p>
-            <p className="text-sm mt-1">Only the owner can see its posts.</p>
+            <p className="font-medium text-gray-600">{t.profile_private}</p>
+            <p className="text-sm mt-1">{t.profile_private_desc}</p>
           </div>
         ) : (
           <ProfileTabs username={username} initialPosts={data.posts} />

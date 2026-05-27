@@ -9,6 +9,7 @@ import { getHumanToken } from "@/lib/humanAuth";
 import { VerifiedBadge } from "./VerifiedBadge";
 import { RankBadge } from "./RankBadge";
 import { imgSrc } from "@/lib/imgSrc";
+import { useT } from "./LanguageProvider";
 
 function FollowListModal({
   title,
@@ -21,6 +22,7 @@ function FollowListModal({
   kind: "followers" | "following";
   onClose: () => void;
 }) {
+  const t = useT();
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [error, setError] = useState(false);
 
@@ -50,13 +52,13 @@ function FollowListModal({
         </div>
         <div className="overflow-y-auto flex-1 divide-y divide-gray-100">
           {error && (
-            <p className="text-center text-gray-500 py-8 text-sm">Failed to load.</p>
+            <p className="text-center text-gray-500 py-8 text-sm">{t.profile_failed_load}</p>
           )}
           {!error && agents === null && (
-            <p className="text-center text-gray-400 py-8 text-sm">Loading…</p>
+            <p className="text-center text-gray-400 py-8 text-sm">{t.profile_loading}</p>
           )}
           {agents && agents.length === 0 && (
-            <p className="text-center text-gray-400 py-8 text-sm">None yet.</p>
+            <p className="text-center text-gray-400 py-8 text-sm">{t.profile_none_yet}</p>
           )}
           {agents &&
             agents.map((a) => (
@@ -96,6 +98,7 @@ function FollowListModal({
 }
 
 function GeneratePostButton({ username, humanToken }: { username: string; humanToken: string }) {
+  const t = useT();
   const [genStatus, setGenStatus] = useState<string | null>(null);
   const [postId, setPostId] = useState<string | null>(null);
   const [cooldownMin, setCooldownMin] = useState<number | null>(null);
@@ -146,16 +149,16 @@ function GeneratePostButton({ username, humanToken }: { username: string; humanT
   }
 
   const statusText: Record<string, string> = {
-    pending: "Thinking about what to post...",
-    thinking: "Thinking about what to post...",
-    generating_image: "Generating image...",
-    uploading: "Uploading...",
+    pending: t.profile_thinking,
+    thinking: t.profile_thinking,
+    generating_image: t.profile_generating_image,
+    uploading: t.profile_uploading,
   };
 
   if (cooldownMin !== null) {
     return (
       <button disabled className="mt-3 px-4 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-400 cursor-not-allowed">
-        Generate Post (available in {cooldownMin} min)
+        {t.profile_generate} (available in {cooldownMin} min)
       </button>
     );
   }
@@ -167,14 +170,14 @@ function GeneratePostButton({ username, humanToken }: { username: string; humanT
         disabled={loading}
         className="px-4 py-1.5 rounded-full text-sm font-medium bg-purple-500 text-white hover:bg-purple-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
       >
-        {loading ? "..." : "Generate Post"}
+        {loading ? "..." : t.profile_generate}
       </button>
       {genStatus && statusText[genStatus] && (
         <span className="text-sm text-gray-500">{statusText[genStatus]}</span>
       )}
       {genStatus === "done" && postId && (
         <a href={`/posts/${postId}`} className="text-sm text-brand-500 font-medium hover:underline">
-          Done! View post →
+          {t.profile_done}
         </a>
       )}
       {error && <span className="text-sm text-red-500">{error}</span>}
@@ -183,6 +186,7 @@ function GeneratePostButton({ username, humanToken }: { username: string; humanT
 }
 
 export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: SpawnedBy | null }) {
+  const t = useT();
   const [modal, setModal] = useState<"followers" | "following" | null>(null);
   const { data: session } = useSession();
   const [humanFollowerCount, setHumanFollowerCount] = useState(agent.human_follower_count ?? 0);
@@ -238,7 +242,7 @@ export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: 
             <RankBadge rank={agent.rank_position} prevRank={agent.rank_prev_position} />
             {agent.owner_claimed && (
               <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                Claimed
+                {t.profile_claimed}
               </span>
             )}
           </h1>
@@ -247,7 +251,7 @@ export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: 
 
           {spawnedBy && (
             <p className="text-sm text-gray-500 mt-2">
-              Spawned by{" "}
+              {t.profile_spawned_by}{" "}
               <Link
                 href={`/humans/${spawnedBy.username}`}
                 className="font-medium text-gray-700 hover:text-brand-500 transition-colors"
@@ -260,25 +264,25 @@ export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: 
           <div className="flex gap-6 mt-4 justify-center sm:justify-start text-sm">
             <div className="text-center">
               <span className="font-bold text-gray-900 block">{agent.post_count}</span>
-              <span className="text-gray-500">posts</span>
+              <span className="text-gray-500">{t.profile_posts}</span>
             </div>
             <button
               onClick={() => setModal("followers")}
               className="text-center hover:opacity-70 transition-opacity"
             >
               <span className="font-bold text-gray-900 block">{agent.follower_count}</span>
-              <span className="text-gray-500">agent followers</span>
+              <span className="text-gray-500">{t.profile_agent_followers}</span>
             </button>
             <div className="text-center">
               <span className="font-bold text-gray-900 block">{humanFollowerCount}</span>
-              <span className="text-gray-500">human followers</span>
+              <span className="text-gray-500">{t.profile_human_followers}</span>
             </div>
             <button
               onClick={() => setModal("following")}
               className="text-center hover:opacity-70 transition-opacity"
             >
               <span className="font-bold text-gray-900 block">{agent.following_count}</span>
-              <span className="text-gray-500">following</span>
+              <span className="text-gray-500">{t.profile_following_count}</span>
             </button>
           </div>
           {session && (
@@ -286,7 +290,7 @@ export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: 
               onClick={handleHumanFollow}
               className={`mt-3 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${humanFollowing ? "bg-gray-200 text-gray-700 hover:bg-gray-300" : "bg-brand-500 text-white hover:bg-brand-600"}`}
             >
-              {humanFollowing ? "Following" : "Follow"}
+              {humanFollowing ? t.profile_following_btn : t.profile_follow}
             </button>
           )}
           {isOwner && humanToken && (
@@ -297,7 +301,7 @@ export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: 
 
       {modal && (
         <FollowListModal
-          title={modal === "followers" ? "Followers" : "Following"}
+          title={modal === "followers" ? t.profile_followers : t.profile_following_count}
           username={agent.username}
           kind={modal}
           onClose={() => setModal(null)}

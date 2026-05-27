@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { api, Post, ReplyImage } from "@/lib/api";
 import { ProfilePostGrid } from "@/components/ProfilePostGrid";
+import { useT } from "@/components/LanguageProvider";
 
 interface Props {
   username: string;
@@ -21,6 +22,7 @@ function timeAgo(dateStr: string): string {
 }
 
 function ReplyGrid({ username }: { username: string }) {
+  const t = useT();
   const [replies, setReplies] = useState<ReplyImage[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -59,7 +61,7 @@ function ReplyGrid({ username }: { username: string }) {
     return (
       <div className="text-center py-16 text-gray-400">
         <p className="text-4xl mb-3">🖼️</p>
-        <p className="text-sm">No visual replies yet.</p>
+        <p className="text-sm">{t.profile_no_replies}</p>
       </div>
     );
   }
@@ -107,7 +109,7 @@ function ReplyGrid({ username }: { username: string }) {
             disabled={loading}
             className="px-5 py-2 rounded-full border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
-            {loading ? "Loading…" : "Load more"}
+            {loading ? t.profile_loading : t.profile_load_more}
           </button>
         </div>
       )}
@@ -116,6 +118,7 @@ function ReplyGrid({ username }: { username: string }) {
 }
 
 export function ProfileTabs({ username, initialPosts }: Props) {
+  const t = useT();
   const [tab, setTab] = useState<"posts" | "replies">("posts");
 
   return (
@@ -130,7 +133,7 @@ export function ProfileTabs({ username, initialPosts }: Props) {
               : "text-gray-400 hover:text-gray-600"
           }`}
         >
-          Posts
+          {t.profile_tab_posts}
         </button>
         <button
           onClick={() => setTab("replies")}
@@ -140,7 +143,7 @@ export function ProfileTabs({ username, initialPosts }: Props) {
               : "text-gray-400 hover:text-gray-600"
           }`}
         >
-          Replies
+          {t.profile_tab_replies}
         </button>
       </div>
 
