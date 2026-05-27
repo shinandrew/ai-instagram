@@ -6,19 +6,13 @@ Registers a new nursery-managed agent and links it to the human.
 Each human may only have one spawned agent.
 """
 
-import base64
-import hashlib
 import json
-import os
 import re
-import secrets
-import urllib.parse
 import uuid as uuid_module
 from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Header
-from fastapi.responses import RedirectResponse
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -32,10 +26,6 @@ from app.models.human import Human
 from app.utils.tokens import generate_api_key, generate_claim_token
 
 router = APIRouter()
-
-# ─── In-memory PKCE state store (single Railway instance) ────────────────────
-# Maps state_uuid → {human_token, code_verifier}
-_twitter_states: dict[str, dict] = {}
 
 _openai: Optional[AsyncOpenAI] = None
 
@@ -180,20 +170,6 @@ async def _create_twin_agent(
     return agent
 
 
-# ─── Twitter PKCE helpers ─────────────────────────────────────────────────────
-
-def _pkce_pair() -> tuple[str, str]:
-    """Return (code_verifier, code_challenge) for PKCE S256."""
-    verifier = base64.urlsafe_b64encode(os.urandom(40)).rstrip(b"=").decode()
-    digest = hashlib.sha256(verifier.encode()).digest()
-    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
-    return verifier, challenge
-
-
-TWITTER_AUTH_URL = "https://twitter.com/i/oauth2/authorize"
-TWITTER_TOKEN_URL = "https://api.twitter.com/2/oauth2/token"
-TWITTER_SCOPES = "tweet.read users.read offline.access"
-
 
 @router.post("/spawn", response_model=SpawnResponse, status_code=status.HTTP_201_CREATED)
 async def spawn_agent(
@@ -279,110 +255,90 @@ async def spawn_agent(
     )
 
 
-# ─── Twitter OAuth 2.0 PKCE ───────────────────────────────────────────────────
+# ─── Twitter Bearer Token — fetch by username ────────────────────────────────
 
-@router.get("/auth/twitter/init")
-async def twitter_init(human_token: str):
-    """Start Twitter OAuth 2.0 PKCE flow. Redirects to Twitter."""
-    if not settings.twitter_client_id:
-        raise HTTPException(status_code=503, detail="Twitter OAuth not configured")
-
-    code_verifier, code_challenge = _pkce_pair()
-    state = secrets.token_urlsafe(24)
-    _twitter_states[state] = {"human_token": human_token, "code_verifier": code_verifier}
-
-    params = {
-        "response_type": "code",
-        "client_id": settings.twitter_client_id,
-        "redirect_uri": settings.twitter_callback_url,
-        "scope": TWITTER_SCOPES,
-        "state": state,
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
-    }
-    url = TWITTER_AUTH_URL + "?" + urllib.parse.urlencode(params)
-    return RedirectResponse(url=url)
+class TwitterTwinRequest(BaseModel):
+    twitter_username: str   # e.g. "elonmusk" or "@elonmusk"
 
 
-@router.get("/auth/twitter/callback")
-async def twitter_callback(
-    code: str,
-    state: str,
+class TwinSpawnResponse(BaseModel):
+    agent_id: str
+    username: str
+    display_name: str
+    avatar_url: str | None
+
+
+@router.post("/spawn/from-twitter", response_model=TwinSpawnResponse, status_code=status.HTTP_201_CREATED)
+async def spawn_from_twitter(
+    body: TwitterTwinRequest,
+    x_human_token: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Twitter OAuth callback: exchanges code, fetches tweets, creates twin agent."""
-    frontend_url = settings.frontend_url.rstrip("/")
+    """Create a Digital Twin by fetching public tweets via Bearer Token."""
+    if not x_human_token:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    if not settings.twitter_bearer_token:
+        raise HTTPException(status_code=503, detail="Twitter API not configured")
 
-    state_data = _twitter_states.pop(state, None)
-    if state_data is None:
-        return RedirectResponse(url=f"{frontend_url}/spawn/twin?error=invalid_state")
-
-    human_token_str = state_data["human_token"]
-    code_verifier = state_data["code_verifier"]
-
-    # Validate human
     try:
-        token_uuid = uuid_module.UUID(human_token_str)
+        token_uuid = uuid_module.UUID(x_human_token)
     except ValueError:
-        return RedirectResponse(url=f"{frontend_url}/spawn/twin?error=invalid_token")
+        raise HTTPException(status_code=401, detail="Invalid human token")
 
     human_result = await db.execute(select(Human).where(Human.human_token == token_uuid))
     human = human_result.scalar_one_or_none()
     if human is None:
-        return RedirectResponse(url=f"{frontend_url}/spawn/twin?error=invalid_token")
+        raise HTTPException(status_code=401, detail="Invalid human token")
 
-    # Exchange code for access token
+    handle = body.twitter_username.lstrip("@").strip()
+    if not handle:
+        raise HTTPException(status_code=422, detail="twitter_username cannot be empty")
+
+    bearer = f"Bearer {settings.twitter_bearer_token}"
+
     async with httpx.AsyncClient() as client:
-        token_resp = await client.post(
-            TWITTER_TOKEN_URL,
-            data={
-                "code": code,
-                "grant_type": "authorization_code",
-                "redirect_uri": settings.twitter_callback_url,
-                "code_verifier": code_verifier,
-            },
-            auth=(settings.twitter_client_id, settings.twitter_client_secret),
+        # Look up user by username
+        user_resp = await client.get(
+            f"https://api.twitter.com/2/users/by/username/{handle}",
+            params={"user.fields": "name,profile_image_url,description"},
+            headers={"Authorization": bearer},
         )
-        if token_resp.status_code != 200:
-            return RedirectResponse(url=f"{frontend_url}/spawn/twin?error=token_exchange_failed")
-        token_data = token_resp.json()
-        access_token = token_data.get("access_token", "")
+        if user_resp.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"X user @{handle} not found")
+        if user_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="Failed to look up X user")
 
-        # Fetch user profile
-        me_resp = await client.get(
-            "https://api.twitter.com/2/users/me",
-            params={"user.fields": "name,username,profile_image_url,description"},
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        if me_resp.status_code != 200:
-            return RedirectResponse(url=f"{frontend_url}/spawn/twin?error=user_fetch_failed")
-        me_data = me_resp.json().get("data", {})
-        twitter_user_id = me_data.get("id", "")
-        twitter_name = me_data.get("name", "Twitter User")
-        avatar_url = me_data.get("profile_image_url", "").replace("_normal", "")
+        user_data = user_resp.json().get("data", {})
+        twitter_user_id = user_data.get("id", "")
+        twitter_name = user_data.get("name", handle)
+        avatar_url = user_data.get("profile_image_url", "").replace("_normal", "_400x400")
 
-        # Fetch up to 100 recent tweets
+        # Fetch up to 100 recent original tweets
         tweets_resp = await client.get(
             f"https://api.twitter.com/2/users/{twitter_user_id}/tweets",
-            params={"max_results": 100, "tweet.fields": "text,created_at", "exclude": "retweets,replies"},
-            headers={"Authorization": f"Bearer {access_token}"},
+            params={
+                "max_results": 100,
+                "tweet.fields": "text,created_at",
+                "exclude": "retweets,replies",
+            },
+            headers={"Authorization": bearer},
         )
         tweets = []
         if tweets_resp.status_code == 200:
             tweets = [t["text"] for t in tweets_resp.json().get("data", [])]
 
-    posts_text = "\n---\n".join(tweets) if tweets else f"No tweets found for {twitter_name}."
+    if not tweets:
+        raise HTTPException(status_code=422, detail=f"No public tweets found for @{handle}. The account may be private or have no posts.")
 
-    try:
-        persona = await _analyze_persona("X (Twitter)", posts_text, twitter_name)
-    except Exception:
-        return RedirectResponse(url=f"{frontend_url}/spawn/twin?error=analysis_failed")
+    posts_text = "\n---\n".join(tweets)
+    persona = await _analyze_persona("X (Twitter)", posts_text, twitter_name)
+    agent = await _create_twin_agent(human, persona, avatar_url or None, db)
 
-    try:
-        agent = await _create_twin_agent(human, persona, avatar_url or None, db)
-    except HTTPException as exc:
-        return RedirectResponse(url=f"{frontend_url}/spawn/twin?error={urllib.parse.quote(exc.detail)}")
-
-    return RedirectResponse(url=f"{frontend_url}/spawn/twin?created={agent.username}")
+    return TwinSpawnResponse(
+        agent_id=str(agent.id),
+        username=agent.username,
+        display_name=agent.display_name,
+        avatar_url=agent.avatar_url,
+    )
 
 

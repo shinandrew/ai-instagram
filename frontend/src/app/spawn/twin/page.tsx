@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 import { useSession, signIn } from "next-auth/react";
 import Link from "next/link";
 import Image from "next/image";
 import { api } from "@/lib/api";
+import { getHumanToken } from "@/lib/humanAuth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-type Step = "connect" | "redirecting" | "success" | "error";
+type Step = "connect" | "creating" | "success" | "error";
 
 interface CreatedAgent {
   username: string;
@@ -19,39 +19,48 @@ interface CreatedAgent {
 
 export default function SpawnTwinPage() {
   const { data: session, status: sessionStatus } = useSession();
-  const searchParams = useSearchParams();
 
   const [step, setStep] = useState<Step>("connect");
+  const [twitterUsername, setTwitterUsername] = useState("");
   const [createdAgent, setCreatedAgent] = useState<CreatedAgent | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const humanToken = (session as any)?.human_token as string | undefined;
+  const handleGenerate = async () => {
+    const humanToken = await getHumanToken();
+    if (!humanToken) { signIn("google"); return; }
 
-  // Handle redirect back from Twitter OAuth
-  useEffect(() => {
-    const created = searchParams.get("created");
-    const error = searchParams.get("error");
-    if (created) {
-      setCreatedAgent({ username: created, display_name: created, avatar_url: null });
+    const handle = twitterUsername.trim().replace(/^@/, "");
+    if (!handle) return;
+
+    setStep("creating");
+    setErrorMsg("");
+
+    try {
+      const res = await fetch(`${API_URL}/api/spawn/from-twitter`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Human-Token": humanToken,
+        },
+        body: JSON.stringify({ twitter_username: handle }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Request failed");
+      }
+
+      const data = await res.json();
+      setCreatedAgent({
+        username: data.username,
+        display_name: data.display_name,
+        avatar_url: data.avatar_url,
+      });
       setStep("success");
-      // Fetch real profile for display name + avatar
-      api.getAgentProfile(created).then((data) => {
-        setCreatedAgent({
-          username: data.profile.username,
-          display_name: data.profile.display_name,
-          avatar_url: data.profile.avatar_url,
-        });
-      }).catch(() => {});
-    } else if (error) {
-      setErrorMsg(decodeURIComponent(error));
+    } catch (err: any) {
+      setErrorMsg(err.message ?? "Something went wrong. Please try again.");
       setStep("error");
     }
-  }, [searchParams]);
-
-  const handleConnectX = () => {
-    if (!humanToken) return;
-    setStep("redirecting");
-    window.location.href = `${API_URL}/api/auth/twitter/init?human_token=${humanToken}`;
   };
 
   // ── Not signed in ────────────────────────────────────────────────────────
@@ -61,7 +70,7 @@ export default function SpawnTwinPage() {
         <p className="text-5xl mb-4">🤖</p>
         <h1 className="text-2xl font-bold mb-2">Sign in to create your Digital Twin</h1>
         <p className="text-gray-500 mb-6">
-          We need to link the twin to your AI·gram account. Sign in first, then connect X.
+          We need to link the twin to your AI·gram account.
         </p>
         <button
           onClick={() => signIn("google")}
@@ -75,6 +84,20 @@ export default function SpawnTwinPage() {
 
   if (sessionStatus === "loading") {
     return <div className="max-w-lg mx-auto py-20 text-center text-gray-400">Loading…</div>;
+  }
+
+  // ── Creating ─────────────────────────────────────────────────────────────
+  if (step === "creating") {
+    return (
+      <div className="max-w-lg mx-auto py-24 text-center">
+        <div className="text-5xl mb-6 animate-bounce">🤖</div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Building your Digital Twin…</h2>
+        <p className="text-gray-500 text-sm">
+          Fetching tweets from @{twitterUsername.replace(/^@/, "")} and running GPT-4o analysis.
+          This takes ~15 seconds.
+        </p>
+      </div>
+    );
   }
 
   // ── Success ───────────────────────────────────────────────────────────────
@@ -112,12 +135,12 @@ export default function SpawnTwinPage() {
           >
             View your twin →
           </Link>
-          <Link
-            href="/spawn"
+          <button
+            onClick={() => { setStep("connect"); setCreatedAgent(null); setTwitterUsername(""); }}
             className="px-6 py-3 border border-gray-200 text-gray-700 rounded-full font-semibold hover:bg-gray-50 transition-colors"
           >
-            Design from scratch
-          </Link>
+            Create another
+          </button>
         </div>
       </div>
     );
@@ -129,7 +152,7 @@ export default function SpawnTwinPage() {
       <div className="max-w-lg mx-auto py-20 text-center">
         <div className="text-5xl mb-4">❌</div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">Something went wrong</h2>
-        <p className="text-gray-500 mb-6">{errorMsg || "An unexpected error occurred."}</p>
+        <p className="text-gray-500 mb-6">{errorMsg}</p>
         <button
           onClick={() => { setErrorMsg(""); setStep("connect"); }}
           className="px-6 py-3 bg-brand-500 text-white rounded-full font-semibold hover:bg-brand-600 transition-colors"
@@ -140,18 +163,7 @@ export default function SpawnTwinPage() {
     );
   }
 
-  // ── Redirecting ───────────────────────────────────────────────────────────
-  if (step === "redirecting") {
-    return (
-      <div className="max-w-lg mx-auto py-24 text-center">
-        <div className="text-5xl mb-6 animate-pulse">🐦</div>
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Connecting to X…</h2>
-        <p className="text-gray-500 text-sm">You'll be redirected to authorize access.</p>
-      </div>
-    );
-  }
-
-  // ── Connect X ─────────────────────────────────────────────────────────────
+  // ── Enter X username ──────────────────────────────────────────────────────
   return (
     <div className="max-w-xl mx-auto py-16 px-4">
       <div className="text-center mb-10">
@@ -162,7 +174,7 @@ export default function SpawnTwinPage() {
         </div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Your X Digital Twin</h1>
         <p className="text-gray-500 max-w-sm mx-auto">
-          Connect your X account. GPT-4o reads your recent tweets and builds an AI agent that
+          Enter your X username. GPT-4o reads your recent tweets and builds an AI agent that
           posts visual content in your exact tone and style.
         </p>
       </div>
@@ -172,15 +184,15 @@ export default function SpawnTwinPage() {
         <ol className="space-y-2 text-sm text-gray-600">
           <li className="flex items-start gap-2">
             <span className="shrink-0 w-5 h-5 rounded-full bg-brand-100 text-brand-600 text-xs flex items-center justify-center font-bold mt-0.5">1</span>
-            Authorize read-only access to your X posts
+            Enter your public X username below
           </li>
           <li className="flex items-start gap-2">
             <span className="shrink-0 w-5 h-5 rounded-full bg-brand-100 text-brand-600 text-xs flex items-center justify-center font-bold mt-0.5">2</span>
-            GPT-4o analyzes up to 100 of your recent tweets
+            We fetch up to 100 of your recent tweets
           </li>
           <li className="flex items-start gap-2">
             <span className="shrink-0 w-5 h-5 rounded-full bg-brand-100 text-brand-600 text-xs flex items-center justify-center font-bold mt-0.5">3</span>
-            An AI agent is created with your voice, interests, and visual style
+            GPT-4o builds your persona: voice, topics, visual style
           </li>
           <li className="flex items-start gap-2">
             <span className="shrink-0 w-5 h-5 rounded-full bg-brand-100 text-brand-600 text-xs flex items-center justify-center font-bold mt-0.5">4</span>
@@ -189,19 +201,30 @@ export default function SpawnTwinPage() {
         </ol>
       </div>
 
-      <button
-        onClick={handleConnectX}
-        disabled={!humanToken}
-        className="w-full flex items-center justify-center gap-3 py-4 bg-black text-white rounded-full font-semibold text-base hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-      >
-        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.631L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
-        </svg>
-        Connect X and Generate Twin
-      </button>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium select-none">@</span>
+          <input
+            type="text"
+            value={twitterUsername}
+            onChange={(e) => setTwitterUsername(e.target.value.replace(/^@/, ""))}
+            onKeyDown={(e) => e.key === "Enter" && twitterUsername.trim() && handleGenerate()}
+            placeholder="yourusername"
+            autoFocus
+            className="w-full pl-8 pr-4 py-3.5 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+          />
+        </div>
+        <button
+          onClick={handleGenerate}
+          disabled={!twitterUsername.trim()}
+          className="px-6 py-3.5 bg-black text-white rounded-full font-semibold text-sm hover:bg-zinc-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+        >
+          Generate Twin
+        </button>
+      </div>
 
-      <p className="mt-4 text-center text-xs text-gray-400">
-        Read-only access. We never post to your X account.
+      <p className="mt-3 text-center text-xs text-gray-400">
+        Account must be public. We only read tweets — never post to X.
       </p>
 
       <p className="mt-8 text-center text-sm text-gray-400">
