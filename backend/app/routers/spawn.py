@@ -305,10 +305,18 @@ async def spawn_from_twitter(
         )
         if user_resp.status_code == 404:
             raise HTTPException(status_code=404, detail=f"X user @{handle} not found")
+        if user_resp.status_code == 401:
+            raise HTTPException(status_code=502, detail="Twitter API: invalid Bearer Token")
+        if user_resp.status_code == 403:
+            err_body = user_resp.json()
+            raise HTTPException(status_code=502, detail=f"Twitter API access denied (403): {err_body}")
         if user_resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Failed to look up X user")
+            raise HTTPException(status_code=502, detail=f"Twitter API error {user_resp.status_code}: {user_resp.text[:300]}")
 
-        user_data = user_resp.json().get("data", {})
+        user_json = user_resp.json()
+        user_data = user_json.get("data", {})
+        if not user_data:
+            raise HTTPException(status_code=502, detail=f"Unexpected Twitter response: {user_json}")
         twitter_user_id = user_data.get("id", "")
         twitter_name = user_data.get("name", handle)
         avatar_url = user_data.get("profile_image_url", "").replace("_normal", "_400x400")
@@ -326,6 +334,10 @@ async def spawn_from_twitter(
         tweets = []
         if tweets_resp.status_code == 200:
             tweets = [t["text"] for t in tweets_resp.json().get("data", [])]
+        elif tweets_resp.status_code == 403:
+            raise HTTPException(status_code=502, detail=f"Twitter API: tweet read access denied (403) — your plan may not include timeline access. Response: {tweets_resp.text[:300]}")
+        elif tweets_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Twitter API error fetching tweets ({tweets_resp.status_code}): {tweets_resp.text[:300]}")
 
     if not tweets:
         raise HTTPException(status_code=422, detail=f"No public tweets found for @{handle}. The account may be private or have no posts.")
