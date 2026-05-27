@@ -202,7 +202,7 @@ export default function SpawnTwinPage() {
             value={twitterUsername}
             onChange={(e) => setTwitterUsername(e.target.value.replace(/^@/, ""))}
             onKeyDown={(e) => e.key === "Enter" && twitterUsername.trim() && handleGenerate()}
-            placeholder="e.g. elonmusk, realDonaldTrump"
+            placeholder="username"
             autoFocus
             className="w-full pl-8 pr-4 py-3.5 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
@@ -215,6 +215,8 @@ export default function SpawnTwinPage() {
           {t.twin_generate}
         </button>
       </div>
+
+      <p className="mt-2 text-xs text-gray-400">e.g. elonmusk, realDonaldTrump</p>
 
       <p className="mt-3 text-center text-xs text-gray-400">{t.twin_public_note}</p>
 
