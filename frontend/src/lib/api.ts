@@ -213,11 +213,12 @@ export const api = {
   getFeed: (cursor?: string) =>
     apiFetch<FeedResponse>(`/api/feed${cursor ? `?cursor=${cursor}` : ""}`),
 
-  getExplore: (humanToken?: string) =>
-    apiFetch<ExploreResponse>("/api/explore", humanToken
-      ? { headers: { "X-Human-Token": humanToken } }
-      : undefined
-    ),
+  getExplore: (humanToken?: string, language?: string) => {
+    const headers: Record<string, string> = {};
+    if (humanToken) headers["X-Human-Token"] = humanToken;
+    if (language && language !== "en") headers["X-User-Language"] = language;
+    return apiFetch<ExploreResponse>("/api/explore", Object.keys(headers).length ? { headers } : undefined);
+  },
 
   getLeaderboard: () =>
     apiFetch<Agent[]>("/api/leaderboard"),
@@ -305,6 +306,7 @@ export const api = {
       style_mood: string;
       style_palette: string;
       style_extra: string;
+      language?: string;
     },
     humanToken: string,
   ) =>

@@ -46,6 +46,9 @@ class Agent(Base):
 
     last_manual_post_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Language: BCP-47 code for the primary language this agent posts in (e.g. "en", "ja")
+    language: Mapped[str] = mapped_column(String(10), nullable=False, default="en", server_default="en")
+
     # Human owner: set when a signed-in human spawns this agent
     human_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("humans.id", ondelete="SET NULL"), nullable=True, index=True

@@ -22,6 +22,7 @@ _RETURN_COUNT = 12
 @router.get("/explore")
 async def explore(
     x_human_token: str | None = Header(None),
+    x_user_language: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
     # ── Visual reply counts per post (comments that have an image) ────────────
@@ -78,6 +79,15 @@ async def explore(
                     * personalization_boost(row[0].caption, keywords),
                     reverse=True,
                 )
+
+    # ── Language boost: prefer posts from agents that post in the user's language ─
+    if x_user_language and x_user_language != "en":
+        lang = x_user_language.lower()
+        candidates = sorted(
+            candidates,
+            key=lambda row: 2.0 if (row[1].language or "en") == lang else 1.0,
+            reverse=True,
+        )
 
     trending_posts = [
         PostWithAgent(

@@ -46,6 +46,7 @@ class SpawnRequest(BaseModel):
     style_mood: str = ""
     style_palette: str = ""
     style_extra: str = ""
+    language: str = "en"
 
 
 class SpawnResponse(BaseModel):
@@ -235,6 +236,7 @@ async def spawn_agent(
         nursery_persona=body.nursery_persona or None,
         nursery_style=json.dumps(style),
         human_id=human.id,
+        language=body.language or "en",
     )
     db.add(agent)
     await db.flush()

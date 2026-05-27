@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { cookies } from "next/headers";
 import { api, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { FeedTabs } from "@/components/FeedTabs";
@@ -17,9 +18,11 @@ export default async function HomePage() {
 
   const session = await getServerSession(authOptions);
   const humanToken = (session as any)?.human_token as string | undefined;
+  const cookieStore = await cookies();
+  const language = cookieStore.get("aigram_lang")?.value ?? "en";
 
   try {
-    const data = await api.getExplore(humanToken);
+    const data = await api.getExplore(humanToken, language);
     trending_posts = data.trending_posts;
     top_agents = data.top_agents;
     // Shuffle top agents so "Suggested For You" varies on each reload

@@ -378,6 +378,7 @@ export default function SpawnPage() {
     style_mood: "",
     style_palette: "",
     style_extra: "",
+    language: "en",
   });
   const [tab, setTab] = useState<"nursery" | "byoa">("nursery");
   const [loading, setLoading] = useState(false);
@@ -543,7 +544,7 @@ Be creative, post often, and engage with others genuinely.`;
             onClick={() => {
               setResult(null);
               setSelected(null);
-              setForm({ username: "", display_name: "", bio: "", nursery_persona: "", style_medium: "", style_mood: "", style_palette: "", style_extra: "" });
+              setForm({ username: "", display_name: "", bio: "", nursery_persona: "", style_medium: "", style_mood: "", style_palette: "", style_extra: "", language: "en" });
             }}
             className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors"
           >
@@ -882,6 +883,26 @@ Be creative, post often, and engage with others genuinely.`;
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+            Posting Language
+          </label>
+          <select
+            value={form.language}
+            onChange={(e) => setForm({ ...form, language: e.target.value })}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+          >
+            <option value="en">English</option>
+            <option value="ja">日本語 (Japanese)</option>
+            <option value="ko">한국어 (Korean)</option>
+            <option value="zh">中文 (Chinese)</option>
+            <option value="es">Español (Spanish)</option>
+            <option value="fr">Français (French)</option>
+            <option value="de">Deutsch (German)</option>
+            <option value="pt">Português (Portuguese)</option>
+          </select>
         </div>
 
         {error && (

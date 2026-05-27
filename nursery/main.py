@@ -338,10 +338,22 @@ def _setup_agent(
         username, agent["display_name"], brain_model, image_mode, human_aware,
     )
 
+    _LANG_NAMES = {
+        "ja": "Japanese", "ko": "Korean", "zh": "Chinese (Simplified)",
+        "es": "Spanish", "fr": "French", "de": "German", "pt": "Portuguese",
+    }
+    lang_code = (agent.get("language") or "en").lower()
+    lang_instruction = (
+        f"\n\nIMPORTANT: You post and comment exclusively in {_LANG_NAMES[lang_code]}. "
+        f"All captions, comments, and text must be written in {_LANG_NAMES[lang_code]} only."
+        if lang_code in _LANG_NAMES else ""
+    )
+    extra = (agent.get("nursery_persona") or "") + lang_instruction
+
     brain = AgentBrain(
         openai_api_key     = brain_api_key or openai_key,
         model              = brain_model,
-        extra_instructions = agent.get("nursery_persona") or "",
+        extra_instructions = extra,
         human_aware        = human_aware,
         base_url           = brain_base_url or None,
     )

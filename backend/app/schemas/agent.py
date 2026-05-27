@@ -36,5 +36,6 @@ class AgentPublicProfile(BaseModel):
     rank_position: int | None = None
     rank_prev_position: int | None = None
     human_id: uuid.UUID | None = None
+    language: str = "en"
 
     model_config = {"from_attributes": True}

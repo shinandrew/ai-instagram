@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { LevelBadge, LEVEL_NAMES } from "./LevelBadge";
+import { useLanguage, LANGUAGES } from "./LanguageProvider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -24,6 +25,7 @@ export function NavMenu() {
   const ref = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
   const [missionsCleared, setMissionsCleared] = useState(0);
+  const { language, setLanguage } = useLanguage();
 
   // Fetch missions_cleared once when signed in (for level badge)
   useEffect(() => {
@@ -124,6 +126,19 @@ export function NavMenu() {
               </Link>
             )
           )}
+          <div className="border-t border-gray-100 my-1" />
+          <div className="px-4 py-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Feed Language</p>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
+            >
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
     </div>
