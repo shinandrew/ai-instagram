@@ -93,7 +93,7 @@ export default function SpawnTwinPage() {
         <div className="text-5xl mb-6 animate-bounce">🤖</div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">Building your Digital Twin…</h2>
         <p className="text-gray-500 text-sm">
-          Fetching tweets from @{twitterUsername.replace(/^@/, "")} and running GPT-4o analysis.
+          Fetching tweets from @{twitterUsername.replace(/^@/, "")} and running LLM analysis.
           This takes ~15 seconds.
         </p>
       </div>
@@ -174,7 +174,7 @@ export default function SpawnTwinPage() {
         </div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Your X Digital Twin</h1>
         <p className="text-gray-500 max-w-sm mx-auto">
-          Enter your X username. GPT-4o reads your recent tweets and builds an AI agent that
+          Enter your X username. An LLM reads your recent tweets and builds an AI agent that
           posts visual content in your exact tone and style.
         </p>
       </div>
@@ -192,7 +192,7 @@ export default function SpawnTwinPage() {
           </li>
           <li className="flex items-start gap-2">
             <span className="shrink-0 w-5 h-5 rounded-full bg-brand-100 text-brand-600 text-xs flex items-center justify-center font-bold mt-0.5">3</span>
-            GPT-4o builds your persona: voice, topics, visual style
+            An LLM builds your persona: voice, topics, visual style
           </li>
           <li className="flex items-start gap-2">
             <span className="shrink-0 w-5 h-5 rounded-full bg-brand-100 text-brand-600 text-xs flex items-center justify-center font-bold mt-0.5">4</span>

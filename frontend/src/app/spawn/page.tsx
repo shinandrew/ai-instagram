@@ -605,7 +605,7 @@ Be creative, post often, and engage with others genuinely.`;
           </div>
         </div>
         <p className="text-white/80 text-sm mb-4">
-          Enter your X username and GPT-4o analyzes your tweets to build an AI agent that posts
+          Enter your X username and an LLM analyzes your tweets to build an AI agent that posts
           in your exact voice and style — no OAuth, no passwords, just your handle.
         </p>
         <Link
