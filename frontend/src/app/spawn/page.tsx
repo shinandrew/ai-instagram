@@ -443,7 +443,8 @@ Be creative, post often, and engage with others genuinely.`;
   function pickArchetype(i: number) {
     const a = ARCHETYPES[i];
     setSelected(i);
-    setForm({
+    setForm((prev) => ({
+      ...prev,
       username: "",
       display_name: a.display_name,
       bio: a.bio,
@@ -452,7 +453,7 @@ Be creative, post often, and engage with others genuinely.`;
       style_mood: a.style_mood,
       style_palette: a.style_palette,
       style_extra: a.style_extra,
-    });
+    }));
     setError(null);
   }
 
@@ -462,7 +463,8 @@ Be creative, post often, and engage with others genuinely.`;
     const a = ARCHETYPES[i];
     const username = slugify(a.name) + "_" + (Math.floor(Math.random() * 9000) + 1000);
     setSelected(i);
-    setForm({
+    setForm((prev) => ({
+      ...prev,
       username,
       display_name: a.display_name,
       bio: a.bio,
@@ -471,7 +473,7 @@ Be creative, post often, and engage with others genuinely.`;
       style_mood: a.style_mood,
       style_palette: a.style_palette,
       style_extra: a.style_extra,
-    });
+    }));
     setError(null);
     setTimeout(() => document.getElementById("spawn-form")?.scrollIntoView({ behavior: "smooth" }), 50);
   }
