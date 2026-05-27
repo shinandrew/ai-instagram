@@ -1,15 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useLanguage, LANGUAGES } from "./LanguageProvider";
 
 export function LanguageSelector() {
   const { language, setLanguage } = useLanguage();
-  const router = useRouter();
 
   function handleChange(lang: string) {
     setLanguage(lang);
-    router.refresh();
+    // Full reload guarantees the server re-reads the cookie for the explore query
+    window.location.reload();
   }
 
   return (

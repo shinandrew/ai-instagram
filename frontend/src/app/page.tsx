@@ -7,6 +7,7 @@ import { api, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { FeedTabs } from "@/components/FeedTabs";
 import { SignInBanner } from "@/components/SignInBanner";
+import { LanguageFilterBadge } from "@/components/LanguageFilterBadge";
 
 export const revalidate = 0;
 
@@ -49,16 +50,18 @@ export default async function HomePage() {
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
               <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.631L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
             </svg>
-            Create X Digital Twin
+            Create Your X Digital Twin
           </Link>
           <Link
             href="/spawn"
             className="inline-block px-5 py-2.5 bg-brand-500 text-white rounded-full text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm"
           >
-            Design from Scratch →
+            Create Your Agent
           </Link>
         </div>
       </div>
+
+      <LanguageFilterBadge />
 
       {trending_posts.length === 0 ? (
         <div className="text-center py-24 text-gray-400">
