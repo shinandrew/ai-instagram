@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { MissionStatus, MissionRequirement, api } from "@/lib/api";
 import { LevelBadge, LEVEL_NAMES } from "./LevelBadge";
+import { useT } from "./LanguageProvider";
 
 interface Props {
   initial: MissionStatus;
@@ -40,6 +41,7 @@ function ProgressBar({ req }: { req: MissionRequirement }) {
 }
 
 export function MissionPanel({ initial, humanToken }: Props) {
+  const t = useT();
   const [status, setStatus] = useState<MissionStatus>(initial);
   const [dismissing, setDismissing] = useState(false);
 
@@ -69,17 +71,17 @@ export function MissionPanel({ initial, humanToken }: Props) {
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1">
               <p className="text-green-800 font-bold text-base">
-                🎉 Mission cleared! You can now spawn agent slot {newlyEarned + 1}.
+                🎉 {t.mission_cleared.replace("{slot}", String(newlyEarned + 1))}
               </p>
               <div className="flex items-center gap-2 mt-1.5">
-                <span className="text-green-700 text-sm">Your level:</span>
+                <span className="text-green-700 text-sm">{t.mission_your_level}</span>
                 <LevelBadge missionsCleared={status.missions_cleared} />
               </div>
               <Link
                 href="/spawn"
                 className="inline-block mt-3 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-full hover:bg-green-700 transition-colors"
               >
-                Spawn your next agent →
+                {t.mission_spawn_next}
               </Link>
             </div>
             <button
@@ -96,7 +98,7 @@ export function MissionPanel({ initial, humanToken }: Props) {
           {status.current_mission && (
             <div className="mt-4 pt-4 border-t border-green-200">
               <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">
-                Next mission — unlock slot {status.current_mission.slot}
+                {t.mission_next_preview.replace("{slot}", String(status.current_mission.slot))}
               </p>
               <div className="space-y-2">
                 {status.current_mission.requirements.map((req) => (
@@ -113,11 +115,11 @@ export function MissionPanel({ initial, humanToken }: Props) {
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-gray-800">
-              🎯 Next Mission — Unlock Agent Slot {status.current_mission.slot}
+              🎯 {t.mission_next_title.replace("{slot}", String(status.current_mission.slot))}
             </h3>
             <span className="text-xs text-gray-400">
               {status.current_mission.requirements.filter((r) => r.done).length}
-              /{status.current_mission.requirements.length} done
+              /{status.current_mission.requirements.length} {t.mission_done}
             </span>
           </div>
           <div className="space-y-3">
@@ -127,7 +129,7 @@ export function MissionPanel({ initial, humanToken }: Props) {
           </div>
           {status.current_mission.all_done && (
             <p className="mt-3 text-xs text-green-600 font-medium">
-              All requirements met! Visit this page again to claim your reward.
+              {t.mission_all_req_met}
             </p>
           )}
         </div>
@@ -137,8 +139,8 @@ export function MissionPanel({ initial, humanToken }: Props) {
       {!hasNewClear && !status.current_mission && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center">
           <p className="text-2xl mb-1">🏆</p>
-          <p className="font-bold text-amber-800">All missions complete — you are a Legend!</p>
-          <p className="text-amber-700 text-sm mt-1">Maximum 10 agent slots unlocked.</p>
+          <p className="font-bold text-amber-800">{t.mission_all_complete}</p>
+          <p className="text-amber-700 text-sm mt-1">{t.mission_max_slots}</p>
         </div>
       )}
     </div>

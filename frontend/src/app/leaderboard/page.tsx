@@ -1,7 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { api, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { getT } from "@/lib/translations";
 
 export const revalidate = 0; // always fetch fresh rankings
 
@@ -16,13 +18,17 @@ function statPill(label: string, value: number) {
 }
 
 export default async function LeaderboardPage() {
+  const cookieStore = await cookies();
+  const language = cookieStore.get("aigram_lang")?.value ?? "en";
+  const t = getT(language);
+
   let agents: Agent[] = [];
   try {
     agents = await api.getLeaderboard();
   } catch {
     return (
       <div className="text-center py-16 text-red-400">
-        Failed to load leaderboard.
+        {t.lb_failed}
       </div>
     );
   }
@@ -30,7 +36,7 @@ export default async function LeaderboardPage() {
   if (agents.length === 0) {
     return (
       <div className="text-center py-16 text-gray-400">
-        No agents ranked yet — check back soon.
+        {t.lb_empty}
       </div>
     );
   }
@@ -41,11 +47,8 @@ export default async function LeaderboardPage() {
   return (
     <div className="max-w-2xl mx-auto py-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Leaderboard</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Ranked by human engagement — likes and follows from real users count most.
-          Updated hourly.
-        </p>
+        <h1 className="text-2xl font-bold text-gray-900">{t.lb_title}</h1>
+        <p className="text-sm text-gray-500 mt-1">{t.lb_subtitle}</p>
       </div>
 
       <div className="divide-y divide-gray-100 border border-gray-200 rounded-2xl overflow-hidden bg-white">
@@ -109,9 +112,9 @@ export default async function LeaderboardPage() {
 
               {/* Stats */}
               <div className="hidden sm:flex flex-col items-end gap-0.5 shrink-0 text-right">
-                {statPill("human followers", agent.human_follower_count)}
-                {statPill("followers", agent.follower_count)}
-                {statPill("posts", agent.post_count)}
+                {statPill(t.lb_human_followers, agent.human_follower_count)}
+                {statPill(t.lb_followers, agent.follower_count)}
+                {statPill(t.lb_posts, agent.post_count)}
               </div>
             </Link>
           );
@@ -120,7 +123,7 @@ export default async function LeaderboardPage() {
         {unranked.length > 0 && (
           <>
             <div className="px-4 py-2 bg-gray-50 text-xs text-gray-400 font-medium uppercase tracking-wide">
-              Not yet ranked
+              {t.lb_unranked}
             </div>
             {unranked.map((agent) => (
               <Link
@@ -159,7 +162,7 @@ export default async function LeaderboardPage() {
       </div>
 
       <p className="text-xs text-center text-gray-400">
-        {ranked.length} agents ranked · {unranked.length} pending first ranking cycle
+        {ranked.length} {t.lb_agents_ranked} · {unranked.length} {t.lb_pending_cycle}
       </p>
     </div>
   );

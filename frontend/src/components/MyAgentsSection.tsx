@@ -6,6 +6,7 @@ import Image from "next/image";
 import { SpawnedAgent, api } from "@/lib/api";
 import { getHumanToken } from "@/lib/humanAuth";
 import { RankBadge } from "./RankBadge";
+import { useT } from "./LanguageProvider";
 
 interface Props {
   agents: SpawnedAgent[];
@@ -19,6 +20,7 @@ function parseStyle(nurseryStyle: string | null) {
 }
 
 export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: Props) {
+  const t = useT();
   const [agents, setAgents] = useState<SpawnedAgent[]>(initialAgents);
   const [editing, setEditing] = useState<SpawnedAgent | null>(null);
   const [saving, setSaving] = useState(false);
@@ -99,7 +101,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
 
   return (
     <div className="mb-8">
-      <h2 className="text-lg font-semibold text-gray-800 mb-3">My Agents</h2>
+      <h2 className="text-lg font-semibold text-gray-800 mb-3">{t.my_agents_title}</h2>
       <div className="space-y-3">
         {agents.map((agent) => (
           <div key={agent.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
@@ -137,7 +139,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
                 <button
                   onClick={() => togglePrivacy(agent)}
                   disabled={togglingId === agent.id}
-                  title={agent.is_private ? "Make public" : "Make private"}
+                  title={agent.is_private ? t.my_agents_make_public : t.my_agents_make_private}
                   className={`px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:opacity-50 ${
                     agent.is_private
                       ? "bg-gray-200 border-gray-300 text-gray-600 hover:bg-gray-300"
@@ -152,7 +154,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
                   onClick={() => openEdit(agent)}
                   className="px-2.5 py-1.5 text-xs font-medium bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
                 >
-                  Edit
+                  {t.my_agents_edit}
                 </button>
 
                 {/* Delete */}
@@ -161,7 +163,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
                   disabled={deletingId === agent.id}
                   className="px-2.5 py-1.5 text-xs font-medium bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors text-red-500 disabled:opacity-50"
                 >
-                  {deletingId === agent.id ? "…" : "Delete"}
+                  {deletingId === agent.id ? "…" : t.my_agents_delete}
                 </button>
               </div>
             )}
@@ -181,7 +183,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Display Name</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t.my_agents_display_name}</label>
                   <input
                     type="text"
                     value={form.display_name}
@@ -190,7 +192,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Bio</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t.my_agents_bio}</label>
                   <textarea
                     value={form.bio}
                     onChange={(e) => setForm({ ...form, bio: e.target.value })}
@@ -199,7 +201,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Persona Instructions</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t.my_agents_persona}</label>
                   <textarea
                     value={form.nursery_persona}
                     onChange={(e) => setForm({ ...form, nursery_persona: e.target.value })}
@@ -209,7 +211,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Style Medium</label>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t.my_agents_style_medium}</label>
                     <input
                       type="text"
                       value={form.style_medium}
@@ -218,7 +220,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Mood</label>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t.my_agents_mood}</label>
                     <input
                       type="text"
                       value={form.style_mood}
@@ -227,7 +229,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Color Palette</label>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t.my_agents_palette}</label>
                     <input
                       type="text"
                       value={form.style_palette}
@@ -236,7 +238,7 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Subject / Extra</label>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t.my_agents_subject}</label>
                     <input
                       type="text"
                       value={form.style_extra}
@@ -254,13 +256,13 @@ export function MyAgentsSection({ agents: initialAgents, isOwner, humanToken }: 
                     disabled={saving}
                     className="flex-1 py-2.5 bg-brand-500 text-white rounded-xl font-semibold text-sm hover:bg-brand-600 transition-colors disabled:opacity-50"
                   >
-                    {saving ? "Saving…" : "Save changes"}
+                    {saving ? t.my_agents_saving : t.my_agents_save}
                   </button>
                   <button
                     onClick={() => setEditing(null)}
                     className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors"
                   >
-                    Cancel
+                    {t.my_agents_cancel}
                   </button>
                 </div>
               </div>

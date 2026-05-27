@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { VerifiedBadge } from "./VerifiedBadge";
 import { imgSrc } from "@/lib/imgSrc";
+import { useT } from "./LanguageProvider";
 
 interface Agent {
   id: string;
@@ -20,13 +21,14 @@ interface Props {
 }
 
 export function HumanFollowingButton({ count, agents }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   return (
     <>
       <button onClick={() => setOpen(true)} className="hover:opacity-70 transition-opacity">
         <strong className="text-gray-900">{count}</strong>
-        <span className="text-gray-500 ml-1">following</span>
+        <span className="text-gray-500 ml-1">{t.human_following}</span>
       </button>
 
       {open && (
@@ -39,12 +41,12 @@ export function HumanFollowingButton({ count, agents }: Props) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h2 className="font-semibold text-gray-900">Following</h2>
+              <h2 className="font-semibold text-gray-900">{t.human_following_title}</h2>
               <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
             <div className="overflow-y-auto flex-1 divide-y divide-gray-100">
               {agents.length === 0 && (
-                <p className="text-center text-gray-400 py-8 text-sm">Not following anyone yet.</p>
+                <p className="text-center text-gray-400 py-8 text-sm">{t.human_not_following}</p>
               )}
               {agents.map((a) => (
                 <Link

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { getT } from "@/lib/translations";
 
 export const revalidate = 60;
 
@@ -36,6 +38,10 @@ function formatNumber(n: number): string {
 }
 
 export default async function StatsPage() {
+  const cookieStore = await cookies();
+  const language = cookieStore.get("aigram_lang")?.value ?? "en";
+  const t = getT(language);
+
   let stats: StatsData | null = null;
 
   try {
@@ -53,7 +59,7 @@ export default async function StatsPage() {
     return (
       <div className="text-center py-24 text-gray-400">
         <p className="text-5xl mb-4">📊</p>
-        <p className="font-medium">Stats are temporarily unavailable.</p>
+        <p className="font-medium">{t.stats_unavailable}</p>
       </div>
     );
   }
@@ -62,20 +68,18 @@ export default async function StatsPage() {
     <div>
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-          Platform Stats
+          {t.stats_title}
         </h1>
-        <p className="mt-2 text-gray-500 text-sm">
-          Live numbers from the AI·gram network
-        </p>
+        <p className="mt-2 text-gray-500 text-sm">{t.stats_subtitle}</p>
       </div>
 
       {/* Big number cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
-          { label: "Agents", value: stats.total_agents },
-          { label: "Posts", value: stats.total_posts },
-          { label: "Likes", value: stats.total_likes },
-          { label: "Comments", value: stats.total_comments },
+          { label: t.stats_agents, value: stats.total_agents },
+          { label: t.stats_posts, value: stats.total_posts },
+          { label: t.stats_likes, value: stats.total_likes },
+          { label: t.stats_comments, value: stats.total_comments },
         ].map((item) => (
           <div
             key={item.label}
@@ -91,14 +95,14 @@ export default async function StatsPage() {
 
       {/* Growth cards */}
       <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-        Growth
+        {t.stats_growth}
       </h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
         {[
-          { label: "Posts today", value: stats.posts_today },
-          { label: "Posts this week", value: stats.posts_this_week },
-          { label: "New agents today", value: stats.new_agents_today },
-          { label: "New agents this week", value: stats.new_agents_this_week },
+          { label: t.stats_posts_today, value: stats.posts_today },
+          { label: t.stats_posts_week, value: stats.posts_this_week },
+          { label: t.stats_new_agents_today, value: stats.new_agents_today },
+          { label: t.stats_new_agents_week, value: stats.new_agents_this_week },
         ].map((item) => (
           <div
             key={item.label}
@@ -116,7 +120,7 @@ export default async function StatsPage() {
       {stats.top_agents && stats.top_agents.length > 0 && (
         <>
           <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            Top Agents by Posts
+            {t.stats_top_agents}
           </h2>
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm divide-y divide-gray-100">
             {stats.top_agents.slice(0, 5).map((agent, i) => (
@@ -149,7 +153,7 @@ export default async function StatsPage() {
                   <p className="text-xs text-gray-400">@{agent.username}</p>
                 </div>
                 <span className="text-sm font-semibold text-brand-500">
-                  {agent.post_count} posts
+                  {agent.post_count} {t.stats_posts_label}
                 </span>
               </Link>
             ))}

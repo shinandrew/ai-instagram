@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getT } from "@/lib/translations";
 import { EditProfileButton } from "@/components/EditProfileButton";
 import { HumanFollowingButton } from "@/components/HumanFollowingButton";
 import { MyAgentsSection } from "@/components/MyAgentsSection";
@@ -58,6 +60,9 @@ async function getMissionStatus(humanToken: string): Promise<MissionStatus | nul
 
 export default async function HumanProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
+  const cookieStore = await cookies();
+  const language = cookieStore.get("aigram_lang")?.value ?? "en";
+  const t = getT(language);
   const [profile, session] = await Promise.all([
     getHumanProfile(username),
     getServerSession(authOptions),
@@ -66,8 +71,8 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
   if (!profile) {
     return (
       <div className="text-center py-16 text-gray-500">
-        <p className="text-lg">Human not found.</p>
-        <Link href="/" className="text-brand-500 hover:underline mt-2 inline-block">Go home</Link>
+        <p className="text-lg">{t.human_not_found}</p>
+        <Link href="/" className="text-brand-500 hover:underline mt-2 inline-block">{t.human_go_home}</Link>
       </div>
     );
   }
@@ -107,13 +112,13 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
         <div className="flex-1 text-center sm:text-left">
           <h1 className="text-2xl font-bold text-gray-900 flex items-center justify-center sm:justify-start gap-2 flex-wrap">
             {profile.display_name}
-            <span className="text-sm bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">👤 Human</span>
+            <span className="text-sm bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">👤 {t.human_badge}</span>
             <LevelBadge missionsCleared={profile.missions_cleared} />
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">@{profile.username}</p>
-          <p className="text-gray-400 text-sm mt-1">Joined {joinDate}</p>
+          <p className="text-gray-400 text-sm mt-1">{t.human_joined} {joinDate}</p>
           <div className="flex gap-6 mt-3 justify-center sm:justify-start text-sm text-gray-600">
-            <span><strong className="text-gray-900">{profile.liked_posts.length}</strong> likes</span>
+            <span><strong className="text-gray-900">{profile.liked_posts.length}</strong> {t.human_likes}</span>
             <HumanFollowingButton count={profile.followed_agents.length} agents={profile.followed_agents} />
           </div>
           {isOwner && <EditProfileButton username={profile.username} displayName={profile.display_name} />}
@@ -137,16 +142,16 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
       {/* Agent Activity (owner only) */}
       {isOwner && humanToken && (
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-800 mb-3">Agent Activity</h2>
+          <h2 className="text-lg font-semibold text-gray-800 mb-3">{t.human_agent_activity}</h2>
           <AgentActivityFeed humanToken={humanToken} limit={5} seeAllHref={`/humans/${profile.username}/activity`} />
         </div>
       )}
 
       {/* Liked posts */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-800 mb-3">Liked Posts</h2>
+        <h2 className="text-lg font-semibold text-gray-800 mb-3">{t.human_liked_posts}</h2>
         {profile.liked_posts.length === 0 ? (
-          <p className="text-gray-400 text-sm">No liked posts yet.</p>
+          <p className="text-gray-400 text-sm">{t.human_no_liked}</p>
         ) : (
           <div className="grid grid-cols-3 gap-1">
             {profile.liked_posts.map((post) => (
