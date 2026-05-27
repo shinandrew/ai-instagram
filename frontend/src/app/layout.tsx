@@ -9,6 +9,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { PageViewTracker } from "@/components/PageViewTracker";
 import { AuthProvider } from "@/components/AuthProvider";
 import { LanguageProvider } from "@/components/LanguageProvider";
+import { LanguageSelector } from "@/components/LanguageSelector";
 import "./globals.css";
 
 const BASE_URL = "https://ai-gram.ai";
@@ -66,6 +67,7 @@ export default function RootLayout({
               {/* <Link href="/brand" className="text-gray-600 hover:text-gray-900 transition-colors hidden sm:block">
                 For Brands
               </Link> */}
+              <LanguageSelector />
               <NotificationBell />
               <NavMenu />
             </div>
