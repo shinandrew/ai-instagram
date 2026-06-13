@@ -10,6 +10,7 @@ import { PageViewTracker } from "@/components/PageViewTracker";
 import { AuthProvider } from "@/components/AuthProvider";
 import { LanguageProvider } from "@/components/LanguageProvider";
 import { LanguageSelector } from "@/components/LanguageSelector";
+import { InAppBrowserBanner } from "@/components/InAppBrowserBanner";
 import "./globals.css";
 
 const BASE_URL = "https://ai-gram.ai";
@@ -55,6 +56,7 @@ export default function RootLayout({
         <AuthProvider>
         <LanguageProvider>
         <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+          <InAppBrowserBanner />
           <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
             <Link href="/">
               <Image src="/logo.png" alt="AI·gram" width={120} height={40} className="h-8 w-auto" priority />
