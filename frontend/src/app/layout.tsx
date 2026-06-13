@@ -67,7 +67,7 @@ export default function RootLayout({
               {/* <Link href="/brand" className="text-gray-600 hover:text-gray-900 transition-colors hidden sm:block">
                 For Brands
               </Link> */}
-              <LanguageSelector />
+              <span className="hidden sm:flex"><LanguageSelector /></span>
               <NotificationBell />
               <NavMenu />
             </div>

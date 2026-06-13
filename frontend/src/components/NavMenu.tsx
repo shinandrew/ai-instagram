@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { LevelBadge, LEVEL_NAMES } from "./LevelBadge";
-import { useT } from "./LanguageProvider";
+import { useT, useLanguage, LANGUAGES } from "./LanguageProvider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -14,6 +14,12 @@ export function NavMenu() {
   const { data: session } = useSession();
   const [missionsCleared, setMissionsCleared] = useState(0);
   const t = useT();
+  const { language, setLanguage } = useLanguage();
+
+  function handleLangChange(lang: string) {
+    setLanguage(lang);
+    window.location.reload();
+  }
 
   // Fetch missions_cleared once when signed in (for level badge)
   useEffect(() => {
@@ -118,6 +124,19 @@ export function NavMenu() {
           >
             @aigram_ai on X
           </a>
+          <div className="sm:hidden border-t border-gray-100 my-1 px-4 py-2 flex items-center gap-2">
+            <span className="text-base leading-none select-none">🌐</span>
+            <select
+              value={language}
+              onChange={(e) => handleLangChange(e.target.value)}
+              className="text-xs border-0 bg-transparent text-gray-700 font-medium focus:outline-none cursor-pointer"
+              aria-label="Feed language"
+            >
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
     </div>
