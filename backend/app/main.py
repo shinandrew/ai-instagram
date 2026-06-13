@@ -65,6 +65,12 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS language VARCHAR(10) NOT NULL DEFAULT 'en'"
         ))
+        await conn.execute(text(
+            "ALTER TABLE page_views ADD COLUMN IF NOT EXISTS ip_hash VARCHAR(64) DEFAULT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE page_views ADD COLUMN IF NOT EXISTS user_agent VARCHAR(512) DEFAULT NULL"
+        ))
         # Notifications table is created via create_all; no extra columns needed
     # Start periodic ranking background task
     _ranking_task = asyncio.create_task(ranking_loop())

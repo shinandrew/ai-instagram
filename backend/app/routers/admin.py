@@ -86,6 +86,92 @@ async def admin_stats(
     }
 
 
+@router.get("/admin/traffic")
+async def admin_traffic(
+    days: int = Query(7, ge=1, le=90),
+    _: None = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Traffic quality breakdown: unique IPs, bot signals, top pages, top user agents."""
+    from sqlalchemy import text as _text
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Known bot UA fragments
+    bot_fragments = [
+        "bot", "crawl", "spider", "slurp", "facebookexternalhit",
+        "Twitterbot", "LinkedInBot", "WhatsApp", "Discordbot",
+        "Applebot", "Baiduspider", "YandexBot", "DuckDuckBot",
+        "Googlebot", "SemrushBot", "AhrefsBot", "DataForSeoBot",
+        "python-httpx", "python-requests", "Go-http-client", "okhttp",
+        "curl", "wget", "axios", "node-fetch", "Scrapy",
+    ]
+    bot_pattern = "|".join(bot_fragments)
+
+    rows = await db.execute(_text(f"""
+        SELECT
+            COUNT(*)                                                   AS total_views,
+            COUNT(DISTINCT ip_hash)                                    AS unique_ips,
+            COUNT(*) FILTER (WHERE ip_hash IS NULL)                    AS no_ip,
+            COUNT(*) FILTER (
+                WHERE user_agent IS NOT NULL
+                  AND user_agent ~* :bot_pattern
+            )                                                          AS bot_ua_views,
+            COUNT(DISTINCT ip_hash) FILTER (
+                WHERE user_agent IS NOT NULL
+                  AND user_agent ~* :bot_pattern
+            )                                                          AS bot_unique_ips
+        FROM page_views
+        WHERE created_at >= :since
+    """), {"bot_pattern": bot_pattern, "since": since})
+    summary = dict(rows.mappings().one())
+
+    top_pages = (await db.execute(_text("""
+        SELECT path, COUNT(*) AS views, COUNT(DISTINCT ip_hash) AS unique_ips
+        FROM page_views
+        WHERE created_at >= :since
+        GROUP BY path
+        ORDER BY views DESC
+        LIMIT 15
+    """), {"since": since})).mappings().all()
+
+    top_uas = (await db.execute(_text("""
+        SELECT
+            COALESCE(user_agent, '(none)') AS user_agent,
+            COUNT(*) AS views,
+            COUNT(DISTINCT ip_hash) AS unique_ips
+        FROM page_views
+        WHERE created_at >= :since
+        GROUP BY user_agent
+        ORDER BY views DESC
+        LIMIT 20
+    """), {"since": since})).mappings().all()
+
+    daily = (await db.execute(_text("""
+        SELECT
+            DATE(created_at AT TIME ZONE 'UTC') AS day,
+            COUNT(*)                            AS views,
+            COUNT(DISTINCT ip_hash)             AS unique_ips
+        FROM page_views
+        WHERE created_at >= :since
+        GROUP BY day
+        ORDER BY day DESC
+    """), {"since": since})).mappings().all()
+
+    human_views = summary["total_views"] - summary["bot_ua_views"]
+    return {
+        "period_days": days,
+        "summary": {
+            **summary,
+            "human_ua_views": human_views,
+            "bot_pct": round(summary["bot_ua_views"] / max(summary["total_views"], 1) * 100, 1),
+        },
+        "daily": [dict(r) for r in daily],
+        "top_pages": [dict(r) for r in top_pages],
+        "top_user_agents": [dict(r) for r in top_uas],
+    }
+
+
 # ── Posts ──────────────────────────────────────────────────────────────────
 
 @router.get("/admin/posts")

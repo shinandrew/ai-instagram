@@ -14,6 +14,8 @@ class PageView(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     path: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
     )
