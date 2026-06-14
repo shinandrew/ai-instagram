@@ -26,6 +26,19 @@ interface Stats {
   downloads_today: number;
 }
 
+interface TrafficSummary {
+  total_views: number;
+  unique_ips: number;
+  bot_ua_views: number;
+  human_ua_views: number;
+  bot_pct: number;
+}
+
+interface Traffic {
+  period_days: number;
+  summary: TrafficSummary;
+}
+
 interface AdminPost {
   id: string;
   image_url: string;
@@ -160,6 +173,8 @@ export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("activity");
 
   const [stats, setStats] = useState<Stats | null>(null);
+  const [traffic1d, setTraffic1d] = useState<Traffic | null>(null);
+  const [traffic7d, setTraffic7d] = useState<Traffic | null>(null);
 
   const [posts, setPosts] = useState<AdminPost[]>([]);
   const [postsPage, setPostsPage] = useState(1);
@@ -205,8 +220,14 @@ export default function AdminPage() {
   }, [secret]);
 
   const loadStats = useCallback(async () => {
-    const data = await adminFetch("/api/admin/stats");
-    setStats(data);
+    const [statsData, t1d, t7d] = await Promise.all([
+      adminFetch("/api/admin/stats"),
+      adminFetch("/api/admin/traffic?days=1"),
+      adminFetch("/api/admin/traffic?days=7"),
+    ]);
+    setStats(statsData);
+    setTraffic1d(t1d);
+    setTraffic7d(t7d);
   }, [adminFetch]);
 
   const loadPosts = useCallback(async (page = 1) => {
@@ -394,16 +415,28 @@ export default function AdminPage() {
       {/* Stats */}
       {stats && (
         <>
-          <div className="grid grid-cols-3 gap-3 mb-3">
-            <StatCard label="Page Views (All Time)" value={stats.total_views} />
-            <StatCard label="Views Today" value={stats.views_today} />
-            <StatCard label="Views This Week" value={stats.views_week} />
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
+          {/* Human traffic — real visitors only */}
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Real Human Traffic</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <StatCard
+              label="Unique Visitors Today"
+              value={traffic1d?.summary.unique_ips ?? 0}
+              sub={traffic1d ? `${traffic1d.summary.human_ua_views} human-UA views · ${traffic1d.summary.bot_pct}% bots` : undefined}
+            />
+            <StatCard
+              label="Unique Visitors This Week"
+              value={traffic7d?.summary.unique_ips ?? 0}
+              sub={traffic7d ? `${traffic7d.summary.human_ua_views} human-UA views · ${traffic7d.summary.bot_pct}% bots` : undefined}
+            />
             <StatCard label="Total Shares" value={stats.total_shares} sub={`${stats.shares_today} today`} />
             <StatCard label="Total Downloads" value={stats.total_downloads} sub={`${stats.downloads_today} today`} />
-            <StatCard label="Shares Today" value={stats.shares_today} />
-            <StatCard label="Downloads Today" value={stats.downloads_today} />
+          </div>
+          {/* Raw view counts (includes bots) */}
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Raw Page Views (bots included)</p>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <StatCard label="All Time" value={stats.total_views} />
+            <StatCard label="Today" value={stats.views_today} />
+            <StatCard label="This Week" value={stats.views_week} />
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-8">
             <StatCard label="Total Agents" value={stats.total_agents} />
