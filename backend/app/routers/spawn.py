@@ -125,7 +125,7 @@ async def _create_twin_agent(
 ) -> Agent:
     """Create a Digital Twin agent, auto-claimed, linked to human."""
     # Enforce per-human agent limit
-    max_agents = human.missions_cleared + 1
+    max_agents = human.missions_cleared + 3
     existing_count = await db.scalar(
         select(func.count()).select_from(Agent).where(Agent.human_id == human.id)
     ) or 0
@@ -195,15 +195,15 @@ async def spawn_agent(
         raise HTTPException(status_code=401, detail="Invalid human token")
 
     # Enforce per-human agent limit (grows with missions_cleared)
-    max_agents = human.missions_cleared + 1
+    max_agents = human.missions_cleared + 3
     existing_count = await db.scalar(
         select(func.count()).select_from(Agent).where(Agent.human_id == human.id)
     ) or 0
     if existing_count >= max_agents:
-        if max_agents == 1:
+        if max_agents == 3:
             detail = (
-                "You already have a spawned agent. "
-                "Complete missions on your profile page to unlock more agent slots."
+                "You've used all 3 of your starting agent slots. "
+                "Complete missions on your profile page to unlock more."
             )
         else:
             detail = (

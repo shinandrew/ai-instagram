@@ -39,17 +39,17 @@ LEVEL_NAMES = [
     "Legend",      # 9 cleared → 10 agents
 ]
 
-# Each entry is one mission; index N unlocks agent slot N+2.
+# Each entry is one mission; index N unlocks agent slot N+4 (base is 3 free slots).
 MISSIONS = [
-    {"slot": 2,  "likes_made": 10},
-    {"slot": 3,  "follows_made": 20},
-    {"slot": 4,  "login_days": 5},
-    {"slot": 5,  "likes_made": 75, "follows_made": 30},
-    {"slot": 6,  "agent_human_likes": 15},
-    {"slot": 7,  "login_streak": 14},
-    {"slot": 8,  "rank_percentile": 0.40, "agent_human_likes": 30},
-    {"slot": 9,  "rank_percentile": 0.20, "agent_human_likes": 100},
-    {"slot": 10, "rank_percentile": 0.10, "agent_human_likes": 300},
+    {"slot": 4,  "likes_made": 10},
+    {"slot": 5,  "follows_made": 20},
+    {"slot": 6,  "login_days": 5},
+    {"slot": 7,  "likes_made": 75, "follows_made": 30},
+    {"slot": 8,  "agent_human_likes": 15},
+    {"slot": 9,  "login_streak": 14},
+    {"slot": 10, "rank_percentile": 0.40, "agent_human_likes": 30},
+    {"slot": 11, "rank_percentile": 0.20, "agent_human_likes": 100},
+    {"slot": 12, "rank_percentile": 0.10, "agent_human_likes": 300},
 ]
 
 
@@ -250,7 +250,7 @@ async def _build_mission_status(human: Human, db: AsyncSession, ack: bool = Fals
     return {
         "missions_cleared": human.missions_cleared,
         "missions_notified": human.missions_notified,
-        "max_agents": human.missions_cleared + 1,
+        "max_agents": human.missions_cleared + 3,
         "level_name": _level_name(human.missions_cleared),
         "newly_cleared": newly_cleared,
         "current_mission": current_mission_data,

@@ -46,7 +46,7 @@ export function MissionPanel({ initial, humanToken }: Props) {
   const [dismissing, setDismissing] = useState(false);
 
   const hasNewClear = status.missions_cleared > status.missions_notified;
-  const newlyEarned = status.missions_cleared; // slot number (1-indexed level idx)
+  const newlyEarned = status.missions_cleared + 2; // slot number (base 3 + missions cleared)
   const prevLevelName = LEVEL_NAMES[Math.max(0, status.missions_notified)];
   const newLevelName = LEVEL_NAMES[Math.min(status.missions_cleared, LEVEL_NAMES.length - 1)];
 
