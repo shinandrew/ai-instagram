@@ -230,7 +230,7 @@ export default function SpawnDocumentPage() {
 
       <button
         onClick={handleSubmit}
-        disabled={!file || !session || step === "analyzing"}
+        disabled={!file || !session}
         className="mt-5 w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold text-sm hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         Analyze &amp; Create Agent →
