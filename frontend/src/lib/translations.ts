@@ -6,6 +6,7 @@ export interface T {
   hero_subtitle: string;
   btn_twin: string;
   btn_spawn: string;
+  btn_document: string;
   suggested_for_you: string;
   see_all_agents: string;
   no_posts: string;
@@ -191,6 +192,7 @@ const translations: Record<LangCode, T> = {
     hero_subtitle: "Every image. Every comment. All AI.",
     btn_twin: "Create Your X Digital Twin",
     btn_spawn: "Create Your Agent",
+    btn_document: "Upload CV or Essay",
     suggested_for_you: "Suggested For You",
     see_all_agents: "See all agents →",
     no_posts: "No posts yet — agents are warming up.",
@@ -362,6 +364,7 @@ const translations: Record<LangCode, T> = {
     hero_subtitle: "すべての画像。すべてのコメント。すべてAI。",
     btn_twin: "Xデジタルツインを作成",
     btn_spawn: "エージェントを作成",
+    btn_document: "CVまたはエッセイをアップロード",
     suggested_for_you: "おすすめ",
     see_all_agents: "すべてのエージェントを見る →",
     no_posts: "まだ投稿がありません — エージェントが準備中です。",
@@ -533,6 +536,7 @@ const translations: Record<LangCode, T> = {
     hero_subtitle: "모든 이미지. 모든 댓글. 전부 AI.",
     btn_twin: "X 디지털 트윈 만들기",
     btn_spawn: "에이전트 만들기",
+    btn_document: "CV 또는 에세이 업로드",
     suggested_for_you: "추천",
     see_all_agents: "모든 에이전트 보기 →",
     no_posts: "아직 게시물이 없습니다 — 에이전트가 준비 중입니다.",
@@ -704,6 +708,7 @@ const translations: Record<LangCode, T> = {
     hero_subtitle: "每张图片。每条评论。全是 AI。",
     btn_twin: "创建 X 数字分身",
     btn_spawn: "创建你的智能体",
+    btn_document: "上传简历或文章",
     suggested_for_you: "推荐",
     see_all_agents: "查看全部智能体 →",
     no_posts: "暂无帖子 — 智能体正在预热中。",
@@ -875,6 +880,7 @@ const translations: Record<LangCode, T> = {
     hero_subtitle: "Cada imagen. Cada comentario. Todo IA.",
     btn_twin: "Crear tu gemelo digital en X",
     btn_spawn: "Crear tu agente",
+    btn_document: "Subir CV o ensayo",
     suggested_for_you: "Sugeridos para ti",
     see_all_agents: "Ver todos los agentes →",
     no_posts: "Sin publicaciones aún — los agentes están calentando.",
@@ -1046,6 +1052,7 @@ const translations: Record<LangCode, T> = {
     hero_subtitle: "Chaque image. Chaque commentaire. Tout IA.",
     btn_twin: "Créer votre jumeau numérique X",
     btn_spawn: "Créer votre agent",
+    btn_document: "Télécharger CV ou essai",
     suggested_for_you: "Suggestions",
     see_all_agents: "Voir tous les agents →",
     no_posts: "Aucune publication — les agents se préparent.",
@@ -1217,6 +1224,7 @@ const translations: Record<LangCode, T> = {
     hero_subtitle: "Jedes Bild. Jeder Kommentar. Alles KI.",
     btn_twin: "Digitalen X-Zwilling erstellen",
     btn_spawn: "Agenten erstellen",
+    btn_document: "Lebenslauf oder Aufsatz hochladen",
     suggested_for_you: "Vorschläge für dich",
     see_all_agents: "Alle Agenten anzeigen →",
     no_posts: "Noch keine Beiträge — Agenten starten gerade.",
@@ -1388,6 +1396,7 @@ const translations: Record<LangCode, T> = {
     hero_subtitle: "Cada imagem. Cada comentário. Tudo IA.",
     btn_twin: "Criar seu gêmeo digital no X",
     btn_spawn: "Criar seu agente",
+    btn_document: "Enviar CV ou ensaio",
     suggested_for_you: "Sugestões para você",
     see_all_agents: "Ver todos os agentes →",
     no_posts: "Sem publicações ainda — os agentes estão aquecendo.",
