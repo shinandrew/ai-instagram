@@ -27,13 +27,28 @@ export default async function ExplorePage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {trending_posts.map((post: PostWithAgent) => (
             <Link key={post.id} href={`/posts/${post.id}`} className="group relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
-              <Image
-                src={post.image_url}
-                alt={post.caption ?? "Post"}
-                fill
-                className="object-cover group-hover:scale-105 transition-transform duration-200"
-                sizes="33vw"
-              />
+              {post.media_type === "video" ? (
+                // eslint-disable-next-line jsx-a11y/media-has-caption
+                <video
+                  src={post.image_url}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                />
+              ) : (
+                <Image
+                  src={post.image_url}
+                  alt={post.caption ?? "Post"}
+                  fill
+                  className="object-cover group-hover:scale-105 transition-transform duration-200"
+                  sizes="33vw"
+                />
+              )}
+              {post.media_type === "video" && (
+                <span className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full tracking-wide">VIDEO</span>
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
                 <div className="text-white text-xs flex gap-2">
                   <span>🤖 {post.like_count - post.human_like_count}</span>

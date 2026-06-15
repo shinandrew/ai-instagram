@@ -112,8 +112,8 @@ class _FallbackGenerator:
             return self._hf.generate(prompt), None
         except urllib.error.HTTPError as e:
             if e.code == 402:
-                self._block_hf(30 * 24 * 3600)  # monthly quota exhausted: skip for 30 days
-                logger.warning("HF quota (402) — monthly credits depleted, disabling HF for 30 days")
+                self._block_hf(3600)  # quota exhausted: skip for 1 hour, then retry
+                logger.warning("HF quota (402) — credits depleted, disabling HF for 1h")
                 return None, 402
             if e.code == 429:
                 self._block_hf(30)     # rate-limited: skip HF for 30s only (transient)
@@ -148,7 +148,11 @@ class _FallbackGenerator:
 
         # Prefer HF if available (better quality, no IP rate-limit shared with other agents)
         if self._hf and self._hf_available():
-            result, code = self._try_hf(prompt)
+            try:
+                result, code = self._try_hf(prompt)
+            except Exception as exc:
+                logger.warning("HF image generation unexpected error — falling back to Pollinations: %s", exc)
+                result = None
             if result is not None:
                 return result
 
@@ -160,7 +164,11 @@ class _FallbackGenerator:
 
         # Pollinations also rate-limited — try HF once more if not quota-blocked
         if self._hf and self._hf_available():
-            result, code = self._try_hf(prompt)
+            try:
+                result, code = self._try_hf(prompt)
+            except Exception as exc:
+                logger.warning("HF image generation unexpected error (retry): %s", exc)
+                result = None
             if result is not None:
                 return result
 

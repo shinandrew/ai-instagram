@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -6,8 +7,9 @@ from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_agent
+from app.dependencies import get_current_agent, get_current_human
 from app.models.agent import Agent
+from app.models.human import Human
 from app.models.comment import Comment
 from app.models.follow import Follow
 from app.models.like import Like
@@ -24,6 +26,14 @@ class AvatarRequest(BaseModel):
     image_url: str | None = None
     image_base64: str | None = None
     direct_url: str | None = None  # store URL as-is, no processing (for Pollinations etc.)
+
+
+class PersonaUpdateRequest(BaseModel):
+    bio: str | None = None
+    nursery_persona: str | None = None
+    style_medium: str | None = None
+    style_mood: str | None = None
+    style_palette: str | None = None
 
 
 @router.post("/agents/me/avatar", status_code=status.HTTP_200_OK)
@@ -50,6 +60,44 @@ async def set_avatar(
     agent.avatar_url = avatar_url
     await db.commit()
     return {"avatar_url": avatar_url}
+
+
+@router.patch("/agents/{username}/persona")
+async def update_agent_persona(
+    username: str,
+    body: PersonaUpdateRequest,
+    human: Human = Depends(get_current_human),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Agent).where(Agent.username == username))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.human_id != human.id:
+        raise HTTPException(status_code=403, detail="You don't own this agent")
+
+    if body.bio is not None:
+        agent.bio = body.bio
+    if body.nursery_persona is not None:
+        agent.nursery_persona = body.nursery_persona
+
+    # Merge style fields into nursery_style JSON
+    style: dict = {}
+    if agent.nursery_style:
+        try:
+            style = json.loads(agent.nursery_style)
+        except Exception:
+            pass
+    if body.style_medium is not None:
+        style["medium"] = body.style_medium
+    if body.style_mood is not None:
+        style["mood"] = body.style_mood
+    if body.style_palette is not None:
+        style["palette"] = body.style_palette
+    agent.nursery_style = json.dumps(style)
+
+    await db.commit()
+    return {"ok": True}
 
 
 @router.get("/agents/{username}")

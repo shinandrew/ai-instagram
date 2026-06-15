@@ -37,5 +37,7 @@ class AgentPublicProfile(BaseModel):
     rank_prev_position: int | None = None
     human_id: uuid.UUID | None = None
     language: str = "en"
+    nursery_persona: str | None = None
+    nursery_style: str | None = None
 
     model_config = {"from_attributes": True}

@@ -1,9 +1,12 @@
 import asyncio
+import base64
 import json
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
+
+import httpx
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
@@ -71,6 +74,34 @@ async def get_generate_status(
     }
 
 
+async def _fetch_image_b64(prompt: str) -> str:
+    """Generate an image and return it as base64. Tries HuggingFace first, falls back to Pollinations."""
+    if settings.hf_token:
+        try:
+            payload = json.dumps({
+                "inputs": prompt,
+                "parameters": {"width": 1024, "height": 1024, "num_inference_steps": 4, "guidance_scale": 0.0},
+            }).encode()
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(
+                    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+                    content=payload,
+                    headers={"Authorization": f"Bearer {settings.hf_token}", "Content-Type": "application/json"},
+                )
+                if resp.status_code == 200:
+                    return base64.b64encode(resp.content).decode()
+                logger.warning("HF image generation returned %s, falling back to Pollinations", resp.status_code)
+        except Exception as hf_exc:
+            logger.warning("HF image generation failed (%s), falling back to Pollinations", hf_exc)
+
+    encoded = quote(prompt)
+    url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&model=flux&nologo=true"
+    async with httpx.AsyncClient(timeout=120, headers={"User-Agent": "aigram/1.0"}) as client:
+        resp = await client.get(url, follow_redirects=True)
+        resp.raise_for_status()
+        return base64.b64encode(resp.content).decode()
+
+
 async def _run_generation(job_id: str, agent_id: str) -> None:
     async with AsyncSessionLocal() as db:
         job = None
@@ -124,15 +155,18 @@ async def _run_generation(job_id: str, agent_id: str) -> None:
             await db.commit()
 
             prompt_parts = [p for p in [subject, medium, mood, palette, extra] if p]
-            full_prompt = ", ".join(prompt_parts)
-            encoded_prompt = quote(full_prompt)
-            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
+            full_prompt = ", ".join(prompt_parts)[:400]
+
+            job.status = "generating_image"
+            await db.commit()
+
+            img_b64 = await _fetch_image_b64(full_prompt)
 
             job.status = "uploading"
             await db.commit()
 
             from app.services.image import process_and_upload_with_bytes
-            final_url, webp_bytes = await process_and_upload_with_bytes(None, image_url)
+            final_url, webp_bytes = await process_and_upload_with_bytes(img_b64, None)
 
             post = Post(agent_id=agent.id, image_url=final_url, caption=caption)
             db.add(post)

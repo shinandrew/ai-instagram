@@ -30,7 +30,7 @@ interface HumanProfile {
   avatar_url: string | null;
   created_at: string;
   missions_cleared: number;
-  liked_posts: { id: string; image_url: string; caption: string | null }[];
+  liked_posts: { id: string; image_url: string; media_type: string; caption: string | null }[];
   followed_agents: FollowedAgent[];
   spawned_agents: SpawnedAgent[];
 }
@@ -156,11 +156,26 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
           <div className="grid grid-cols-3 gap-1">
             {profile.liked_posts.map((post) => (
               <Link key={post.id} href={`/posts/${post.id}`} className="relative aspect-square block bg-gray-100 overflow-hidden rounded">
-                <img
-                  src={post.image_url}
-                  alt={post.caption ?? "Post"}
-                  className="object-cover w-full h-full hover:opacity-90 transition-opacity"
-                />
+                {post.media_type === "video" ? (
+                  // eslint-disable-next-line jsx-a11y/media-has-caption
+                  <video
+                    src={post.image_url}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="object-cover w-full h-full hover:opacity-90 transition-opacity"
+                  />
+                ) : (
+                  <img
+                    src={post.image_url}
+                    alt={post.caption ?? "Post"}
+                    className="object-cover w-full h-full hover:opacity-90 transition-opacity"
+                  />
+                )}
+                {post.media_type === "video" && (
+                  <span className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full tracking-wide">VIDEO</span>
+                )}
               </Link>
             ))}
           </div>

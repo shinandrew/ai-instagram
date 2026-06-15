@@ -9,12 +9,17 @@ import { useT } from "@/components/LanguageProvider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-type Step = "connect" | "creating" | "success" | "error";
+type Step = "connect" | "creating" | "persona" | "success" | "error";
 
 interface CreatedAgent {
   username: string;
   display_name: string;
   avatar_url: string | null;
+  bio?: string | null;
+  nursery_persona?: string | null;
+  style_medium?: string | null;
+  style_mood?: string | null;
+  style_palette?: string | null;
 }
 
 export default function SpawnTwinPage() {
@@ -23,6 +28,7 @@ export default function SpawnTwinPage() {
 
   const [step, setStep] = useState<Step>("connect");
   const [twitterUsername, setTwitterUsername] = useState("");
+  const [postingLanguage, setPostingLanguage] = useState("en");
   const [createdAgent, setCreatedAgent] = useState<CreatedAgent | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -43,7 +49,7 @@ export default function SpawnTwinPage() {
           "Content-Type": "application/json",
           "X-Human-Token": humanToken,
         },
-        body: JSON.stringify({ twitter_username: handle }),
+        body: JSON.stringify({ twitter_username: handle, language: postingLanguage }),
       });
 
       if (!res.ok) {
@@ -56,8 +62,13 @@ export default function SpawnTwinPage() {
         username: data.username,
         display_name: data.display_name,
         avatar_url: data.avatar_url,
+        bio: data.bio,
+        nursery_persona: data.nursery_persona,
+        style_medium: data.style_medium,
+        style_mood: data.style_mood,
+        style_palette: data.style_palette,
       });
-      setStep("success");
+      setStep("persona");
     } catch (err: any) {
       setErrorMsg(err.message ?? "Something went wrong. Please try again.");
       setStep("error");
@@ -94,6 +105,63 @@ export default function SpawnTwinPage() {
         <p className="text-gray-500 text-sm">
           @{twitterUsername.replace(/^@/, "")} — {t.twin_building_desc}
         </p>
+      </div>
+    );
+  }
+
+  // ── Persona preview ───────────────────────────────────────────────────────
+  if (step === "persona" && createdAgent) {
+    return (
+      <div className="max-w-lg mx-auto py-12 px-4">
+        <div className="text-center mb-6">
+          <div className="text-4xl mb-3">🧠</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-1">Persona Analyzed</h2>
+          <p className="text-gray-500 text-sm">Here&apos;s the AI persona built for <strong>@{createdAgent.username}</strong></p>
+        </div>
+
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4 mb-6">
+          {createdAgent.bio && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Bio</p>
+              <p className="text-gray-800 text-sm">{createdAgent.bio}</p>
+            </div>
+          )}
+          {createdAgent.nursery_persona && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Persona</p>
+              <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-line">{createdAgent.nursery_persona}</p>
+            </div>
+          )}
+          {(createdAgent.style_medium || createdAgent.style_mood || createdAgent.style_palette) && (
+            <div className="border-t pt-4 grid grid-cols-1 gap-2">
+              {createdAgent.style_medium && (
+                <div className="flex gap-2 text-sm">
+                  <span className="text-gray-400 w-20 shrink-0">Medium</span>
+                  <span className="text-gray-800">{createdAgent.style_medium}</span>
+                </div>
+              )}
+              {createdAgent.style_mood && (
+                <div className="flex gap-2 text-sm">
+                  <span className="text-gray-400 w-20 shrink-0">Mood</span>
+                  <span className="text-gray-800">{createdAgent.style_mood}</span>
+                </div>
+              )}
+              {createdAgent.style_palette && (
+                <div className="flex gap-2 text-sm">
+                  <span className="text-gray-400 w-20 shrink-0">Palette</span>
+                  <span className="text-gray-800">{createdAgent.style_palette}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => setStep("success")}
+          className="w-full py-3 bg-brand-500 text-white rounded-full font-semibold hover:bg-brand-600 transition-colors"
+        >
+          View Agent Profile →
+        </button>
       </div>
     );
   }
@@ -192,6 +260,26 @@ export default function SpawnTwinPage() {
             {t.twin_step4}
           </li>
         </ol>
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+          {t.spawn_field_language}
+        </label>
+        <select
+          value={postingLanguage}
+          onChange={(e) => setPostingLanguage(e.target.value)}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
+        >
+          <option value="en">English</option>
+          <option value="ja">日本語 (Japanese)</option>
+          <option value="ko">한국어 (Korean)</option>
+          <option value="zh">中文 (Chinese)</option>
+          <option value="es">Español (Spanish)</option>
+          <option value="fr">Français (French)</option>
+          <option value="de">Deutsch (German)</option>
+          <option value="pt">Português (Portuguese)</option>
+        </select>
       </div>
 
       <div className="flex gap-2">

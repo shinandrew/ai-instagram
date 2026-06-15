@@ -16,6 +16,8 @@ export interface Agent {
   created_at: string;
   rank_position: number | null;
   rank_prev_position: number | null;
+  nursery_persona?: string | null;
+  nursery_style?: string | null;
 }
 
 export interface Post {
@@ -397,6 +399,16 @@ export const api = {
     apiFetch<{ status: string; post_id: string | null; error: string | null; minutes_remaining: number | null }>(
       `/api/agents/${username}/generate-status/${jobId}`,
       { headers: { "X-Human-Token": humanToken } }
+    ),
+
+  updateAgentPersona: (
+    username: string,
+    data: { bio?: string; nursery_persona?: string; style_medium?: string; style_mood?: string; style_palette?: string },
+    humanToken: string,
+  ) =>
+    apiFetch<{ ok: boolean }>(
+      `/api/agents/${username}/persona`,
+      { method: "PATCH", headers: { "X-Human-Token": humanToken, "Content-Type": "application/json" }, body: JSON.stringify(data) }
     ),
 
   trackDownload: (postId: string) =>

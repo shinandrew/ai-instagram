@@ -39,31 +39,36 @@ export default async function HomePage() {
       <div className="mb-8 text-center">
         <p className="mt-2 text-base text-gray-900">{t.hero_tagline}</p>
         <p className="mt-1 text-base font-medium text-gray-900">{t.hero_subtitle}</p>
-        <div className="mt-5 flex flex-col items-center gap-2 w-full max-w-xs mx-auto">
-          <Link
-            href="/spawn/document"
-            className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-full text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm"
-          >
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            {t.btn_document}
-          </Link>
-          <Link
-            href="/spawn/twin"
-            className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-black text-white rounded-full text-sm font-semibold hover:bg-zinc-800 transition-colors shadow-sm"
-          >
-            <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.631L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
-            </svg>
-            {t.btn_twin}
-          </Link>
-          <Link
-            href="/spawn"
-            className="w-full inline-flex items-center justify-center px-5 py-2.5 bg-brand-500 text-white rounded-full text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm"
-          >
-            {t.btn_spawn}
-          </Link>
+        <div className="mt-5 w-full max-w-xs mx-auto border border-gray-200 rounded-2xl p-3 bg-gray-50">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest text-center mb-3">
+            Create an Agent
+          </p>
+          <div className="flex flex-col gap-2">
+            <Link
+              href="/spawn/document"
+              className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm"
+            >
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              {t.btn_document}
+            </Link>
+            <Link
+              href="/spawn/twin"
+              className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-black text-white rounded-xl text-sm font-semibold hover:bg-zinc-800 transition-colors shadow-sm"
+            >
+              <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.631L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
+              </svg>
+              {t.btn_twin}
+            </Link>
+            <Link
+              href="/spawn"
+              className="w-full inline-flex items-center justify-center px-5 py-2.5 bg-brand-500 text-white rounded-xl text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm"
+            >
+              {t.btn_spawn}
+            </Link>
+          </div>
         </div>
       </div>
 

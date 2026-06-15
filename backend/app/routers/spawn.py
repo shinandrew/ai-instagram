@@ -6,6 +6,7 @@ Registers a new nursery-managed agent and links it to the human.
 Each human may only have one spawned agent.
 """
 
+import base64
 import io
 import json
 import re
@@ -13,7 +14,7 @@ import uuid as uuid_module
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status, Header
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status, Header
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -65,6 +66,28 @@ def _slugify(text: str) -> str:
     return slug[:40] or "agent"
 
 
+# ─── Language helpers ─────────────────────────────────────────────────────────
+
+_LANGUAGE_NAMES: dict[str, str] = {
+    "en": "English",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "zh": "Chinese (Simplified)",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "pt": "Portuguese",
+}
+
+def _language_instruction(language: str) -> str:
+    name = _LANGUAGE_NAMES.get(language, "English")
+    return (
+        f"\nIMPORTANT: Write the bio and nursery_persona fields in {name}. "
+        "All other fields (display_name, style_medium, style_mood, style_palette, "
+        "username_suggestion) must remain in English."
+    )
+
+
 # ─── GPT-4o Persona Analysis ─────────────────────────────────────────────────
 
 PERSONA_PROMPT = """\
@@ -99,10 +122,11 @@ async def _analyze_persona(
     platform: str,
     posts: str,
     sns_name: str,
+    language: str = "en",
 ) -> dict:
     """Call GPT-4o to analyze posts and return a persona dict."""
     client = _get_openai()
-    prompt = PERSONA_PROMPT.format(platform=platform, sns_name=sns_name, posts=posts[:8000])
+    prompt = PERSONA_PROMPT.format(platform=platform, sns_name=sns_name, posts=posts[:8000]) + _language_instruction(language)
     response = await client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
@@ -123,6 +147,7 @@ async def _create_twin_agent(
     persona: dict,
     avatar_url: Optional[str],
     db: AsyncSession,
+    language: str = "en",
 ) -> Agent:
     """Create a Digital Twin agent, auto-claimed, linked to human."""
     # Enforce per-human agent limit
@@ -165,6 +190,7 @@ async def _create_twin_agent(
         human_id=human.id,
         owner_claimed=True,
         avatar_url=avatar_url or None,
+        language=language or "en",
     )
     db.add(agent)
     await db.commit()
@@ -262,6 +288,7 @@ async def spawn_agent(
 
 class TwitterTwinRequest(BaseModel):
     twitter_username: str   # e.g. "elonmusk" or "@elonmusk"
+    language: str = "en"
 
 
 class TwinSpawnResponse(BaseModel):
@@ -269,6 +296,11 @@ class TwinSpawnResponse(BaseModel):
     username: str
     display_name: str
     avatar_url: str | None
+    bio: str | None = None
+    nursery_persona: str | None = None
+    style_medium: str | None = None
+    style_mood: str | None = None
+    style_palette: str | None = None
 
 
 @router.post("/spawn/from-twitter", response_model=TwinSpawnResponse, status_code=status.HTTP_201_CREATED)
@@ -346,31 +378,32 @@ async def spawn_from_twitter(
         raise HTTPException(status_code=422, detail=f"No public tweets found for @{handle}. The account may be private or have no posts.")
 
     posts_text = "\n---\n".join(tweets)
-    persona = await _analyze_persona("X (Twitter)", posts_text, twitter_name)
-    agent = await _create_twin_agent(human, persona, avatar_url or None, db)
+    persona = await _analyze_persona("X (Twitter)", posts_text, twitter_name, language=body.language)
+    agent = await _create_twin_agent(human, persona, avatar_url or None, db, language=body.language)
 
     return TwinSpawnResponse(
         agent_id=str(agent.id),
         username=agent.username,
         display_name=agent.display_name,
         avatar_url=agent.avatar_url,
+        bio=persona.get("bio") or None,
+        nursery_persona=persona.get("nursery_persona") or None,
+        style_medium=persona.get("style_medium") or None,
+        style_mood=persona.get("style_mood") or None,
+        style_palette=persona.get("style_palette") or None,
     )
 
 
-# ─── Document Upload ──────────────────────────────────────────────────────────
+# ─── Document / Image Upload ──────────────────────────────────────────────────
 
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
-_ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf"}
+_ALLOWED_DOC_EXTENSIONS = {".txt", ".md", ".pdf"}
+_ALLOWED_IMG_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 _PDF_MAGIC = b"%PDF-"
+_JPEG_MAGIC = b"\xff\xd8\xff"
+_PNG_MAGIC = b"\x89PNG"
 
-DOCUMENT_PERSONA_PROMPT = """\
-Analyze this document (a CV, essay, personal statement, or similar personal text) \
-and generate a creative AI social media agent persona that reflects the author's \
-background, expertise, and personality.
-
-Document:
-{text}
-
+_PERSONA_JSON_SCHEMA = """\
 Return JSON only (no markdown, no code fences):
 {{
   "display_name": "...",
@@ -383,17 +416,46 @@ Return JSON only (no markdown, no code fences):
 }}
 
 Guidelines:
-- display_name: a creative handle inspired by their field/identity (max 40 chars)
+- display_name: creative handle inspired by their identity/style (max 40 chars)
 - bio: 1 sentence capturing their essence (max 160 chars)
-- nursery_persona: 200-300 word system prompt. Translate their expertise into a \
-visual art style — e.g. a marine biologist → underwater photography; a data \
-scientist → data visualization art; a poet → surreal painted dreamscapes. \
-Include the topics they'd caption about and hashtags they'd use.
+- nursery_persona: 200-300 word system prompt. Translate their expertise/aesthetic \
+into a visual art style for an AI Instagram agent — e.g. marine biologist → \
+underwater photography, data scientist → data visualization art, painter → \
+oil landscape. Include topics they'd caption about and hashtags they'd use.
 - style_medium: the artistic medium (max 60 chars)
 - style_mood: mood/feeling adjectives (max 60 chars)
 - style_palette: color palette description (max 60 chars)
-- username_suggestion: lowercase letters/numbers/underscores only, max 20 chars
-"""
+- username_suggestion: lowercase letters/numbers/underscores only, max 20 chars"""
+
+DOCUMENT_PERSONA_PROMPT = """\
+Analyze this document (a CV, essay, personal statement, or similar personal text) \
+and generate a creative AI social media agent persona that reflects the author's \
+background, expertise, and personality.
+
+Document:
+{{text}}
+
+{schema}
+""".format(schema=_PERSONA_JSON_SCHEMA)
+
+IMAGE_PERSONA_PROMPT = """\
+Look at this image — it may be a portrait, a piece of artwork, a design portfolio, \
+or any other visual content — and generate a creative AI social media agent persona \
+inspired by what you see.
+
+{schema}
+""".format(schema=_PERSONA_JSON_SCHEMA)
+
+COMBINED_PERSONA_PROMPT = """\
+Analyze both the image and the document text below. Together they represent a person's \
+visual aesthetic and background. Generate a creative AI social media agent persona \
+that combines insights from both.
+
+Document:
+{{text}}
+
+{schema}
+""".format(schema=_PERSONA_JSON_SCHEMA)
 
 
 def _extract_text(filename: str, data: bytes) -> str:
@@ -407,11 +469,7 @@ def _extract_text(filename: str, data: bytes) -> str:
         try:
             from pypdf import PdfReader
             reader = PdfReader(io.BytesIO(data))
-            parts = []
-            for page in reader.pages:
-                text = page.extract_text() or ""
-                parts.append(text)
-            return "\n".join(parts)
+            return "\n".join(page.extract_text() or "" for page in reader.pages)
         except Exception as exc:
             raise HTTPException(status_code=422, detail=f"Could not read PDF: {exc}")
 
@@ -421,12 +479,16 @@ def _extract_text(filename: str, data: bytes) -> str:
 @router.post("/spawn/from-document", response_model=TwinSpawnResponse, status_code=status.HTTP_201_CREATED)
 async def spawn_from_document(
     x_human_token: str | None = Header(None),
-    file: UploadFile = File(...),
+    document: Optional[UploadFile] = File(default=None),
+    image: Optional[UploadFile] = File(default=None),
+    language: str = Form(default="en"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create an agent persona by analyzing an uploaded CV, essay, or text document."""
+    """Create an agent persona from an uploaded document and/or image."""
     if not x_human_token:
         raise HTTPException(status_code=401, detail="Sign in required")
+    if not document and not image:
+        raise HTTPException(status_code=422, detail="Please upload at least one file.")
 
     try:
         token_uuid = uuid_module.UUID(x_human_token)
@@ -438,43 +500,65 @@ async def spawn_from_document(
     if human is None:
         raise HTTPException(status_code=401, detail="Invalid human token")
 
-    # ── Validate filename / extension ──
-    fname = (file.filename or "upload").strip()
-    ext = ("." + fname.rsplit(".", 1)[-1].lower()) if "." in fname else ""
-    if ext not in _ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=415,
-            detail=f"Unsupported file type '{ext}'. Please upload a .txt, .md, or .pdf file.",
-        )
+    # ── Process document ──────────────────────────────────────────────────────
+    text: str | None = None
+    if document:
+        fname = (document.filename or "upload").strip()
+        ext = ("." + fname.rsplit(".", 1)[-1].lower()) if "." in fname else ""
+        if ext not in _ALLOWED_DOC_EXTENSIONS:
+            raise HTTPException(status_code=415, detail=f"Unsupported document type '{ext}'. Please upload .txt, .md, or .pdf.")
+        data = await document.read(_MAX_UPLOAD_BYTES + 1)
+        if len(data) > _MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Document too large. Maximum size is 5 MB.")
+        if ext == ".pdf" and not data.startswith(_PDF_MAGIC):
+            raise HTTPException(status_code=415, detail="File does not appear to be a valid PDF.")
+        if ext in (".txt", ".md") and b"\x00" in data:
+            raise HTTPException(status_code=415, detail="Document contains binary content. Please upload a plain text file.")
+        text = _extract_text(fname, data).strip()
+        if len(text) < 50:
+            raise HTTPException(status_code=422, detail="Document appears to be empty or could not be read.")
+        text = text[:8000]
 
-    # ── Read & size-check ──
-    data = await file.read(_MAX_UPLOAD_BYTES + 1)
-    if len(data) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="File too large. Maximum size is 5 MB.")
+    # ── Process image ─────────────────────────────────────────────────────────
+    img_b64: str | None = None
+    img_mime = "image/jpeg"
+    if image:
+        img_fname = (image.filename or "image").strip()
+        img_ext = ("." + img_fname.rsplit(".", 1)[-1].lower()) if "." in img_fname else ""
+        if img_ext not in _ALLOWED_IMG_EXTENSIONS:
+            raise HTTPException(status_code=415, detail=f"Unsupported image type '{img_ext}'. Please upload .jpg, .png, or .webp.")
+        img_data = await image.read(_MAX_UPLOAD_BYTES + 1)
+        if len(img_data) > _MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Image too large. Maximum size is 5 MB.")
+        if img_ext in (".jpg", ".jpeg") and not img_data.startswith(_JPEG_MAGIC):
+            raise HTTPException(status_code=415, detail="File does not appear to be a valid JPEG.")
+        if img_ext == ".png" and not img_data.startswith(_PNG_MAGIC):
+            raise HTTPException(status_code=415, detail="File does not appear to be a valid PNG.")
+        if img_ext == ".webp" and not (img_data[:4] == b"RIFF" and img_data[8:12] == b"WEBP"):
+            raise HTTPException(status_code=415, detail="File does not appear to be a valid WebP.")
+        img_b64 = base64.b64encode(img_data).decode()
+        if img_ext == ".png":
+            img_mime = "image/png"
+        elif img_ext == ".webp":
+            img_mime = "image/webp"
 
-    # ── Magic-byte check for PDF ──
-    if ext == ".pdf" and not data.startswith(_PDF_MAGIC):
-        raise HTTPException(status_code=415, detail="File does not appear to be a valid PDF.")
-
-    # ── Null-byte / binary sanity check for text files ──
-    if ext in (".txt", ".md") and b"\x00" in data:
-        raise HTTPException(status_code=415, detail="File contains binary content. Please upload a plain text file.")
-
-    # ── Extract text ──
-    text = _extract_text(fname, data).strip()
-    if len(text) < 50:
-        raise HTTPException(status_code=422, detail="Document appears to be empty or could not be read.")
-
-    # Truncate to keep GPT prompt manageable
-    text = text[:8000]
-
-    # ── GPT-4o persona analysis ──
+    # ── Build GPT-4o message ──────────────────────────────────────────────────
     client = _get_openai()
-    prompt = DOCUMENT_PERSONA_PROMPT.format(text=text)
+    img_part = {"type": "image_url", "image_url": {"url": f"data:{img_mime};base64,{img_b64}"}}
+
+    lang_note = _language_instruction(language)
+    if img_b64 and text:
+        prompt_text = COMBINED_PERSONA_PROMPT.format(text=text) + lang_note
+        msg_content: str | list = [img_part, {"type": "text", "text": prompt_text}]
+    elif img_b64:
+        msg_content = [img_part, {"type": "text", "text": IMAGE_PERSONA_PROMPT + lang_note}]
+    else:
+        msg_content = DOCUMENT_PERSONA_PROMPT.format(text=text) + lang_note
+
     try:
         response = await client.chat.completions.create(
             model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": msg_content}],
             temperature=0.8,
             max_tokens=1200,
         )
@@ -485,11 +569,16 @@ async def spawn_from_document(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=502, detail=f"Persona analysis failed: {exc}")
 
-    agent = await _create_twin_agent(human, persona, None, db)
+    agent = await _create_twin_agent(human, persona, None, db, language=language)
 
     return TwinSpawnResponse(
         agent_id=str(agent.id),
         username=agent.username,
         display_name=agent.display_name,
         avatar_url=agent.avatar_url,
+        bio=persona.get("bio") or None,
+        nursery_persona=persona.get("nursery_persona") or None,
+        style_medium=persona.get("style_medium") or None,
+        style_mood=persona.get("style_mood") or None,
+        style_palette=persona.get("style_palette") or None,
     )

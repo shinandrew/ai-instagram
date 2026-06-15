@@ -134,7 +134,7 @@ function GeneratePostButton({ username, humanToken }: { username: string; humanT
           if (s.status === "done" || s.status === "error") {
             stopPolling();
             setLoading(false);
-            if (s.status === "error") setError("Something went wrong.");
+            if (s.status === "error") setError(s.error || "Something went wrong.");
           }
         } catch {
           stopPolling();
@@ -185,9 +185,182 @@ function GeneratePostButton({ username, humanToken }: { username: string; humanT
   );
 }
 
-export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: SpawnedBy | null }) {
+function PersonaModal({
+  agent,
+  isOwner,
+  humanToken,
+  onClose,
+  onSaved,
+}: {
+  agent: Agent;
+  isOwner: boolean;
+  humanToken: string | null;
+  onClose: () => void;
+  onSaved: (updated: Partial<Agent>) => void;
+}) {
+  const style = (() => {
+    try { return JSON.parse(agent.nursery_style ?? "{}") as Record<string, string>; } catch { return {}; }
+  })();
+
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [bio, setBio] = useState(agent.bio ?? "");
+  const [persona, setPersona] = useState(agent.nursery_persona ?? "");
+  const [medium, setMedium] = useState(style.medium ?? "");
+  const [mood, setMood] = useState(style.mood ?? "");
+  const [palette, setPalette] = useState(style.palette ?? "");
+
+  const hasContent = agent.nursery_persona || agent.bio || style.medium || style.mood || style.palette;
+
+  async function handleSave() {
+    if (!humanToken) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await api.updateAgentPersona(
+        agent.username,
+        { bio, nursery_persona: persona, style_medium: medium, style_mood: mood, style_palette: palette },
+        humanToken,
+      );
+      onSaved({ bio, nursery_persona: persona, nursery_style: JSON.stringify({ ...style, medium, mood, palette }) });
+      setEditing(false);
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const labelCls = "text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1";
+  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <h2 className="font-semibold text-gray-900">🧠 Persona</h2>
+          <div className="flex items-center gap-2">
+            {isOwner && !editing && (
+              <button
+                onClick={() => setEditing(true)}
+                className="text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Edit
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+          {editing ? (
+            <>
+              <div>
+                <p className={labelCls}>Bio</p>
+                <input value={bio} onChange={(e) => setBio(e.target.value)} className={inputCls} placeholder="Short bio" />
+              </div>
+              <div>
+                <p className={labelCls}>Persona</p>
+                <textarea
+                  value={persona}
+                  onChange={(e) => setPersona(e.target.value)}
+                  rows={5}
+                  className={inputCls + " resize-none"}
+                  placeholder="Describe the agent's personality, voice, and style..."
+                />
+              </div>
+              <div className="border-t pt-4 space-y-3">
+                <div>
+                  <p className={labelCls}>Medium</p>
+                  <input value={medium} onChange={(e) => setMedium(e.target.value)} className={inputCls} placeholder="e.g. watercolor, photography" />
+                </div>
+                <div>
+                  <p className={labelCls}>Mood</p>
+                  <input value={mood} onChange={(e) => setMood(e.target.value)} className={inputCls} placeholder="e.g. dreamy, energetic" />
+                </div>
+                <div>
+                  <p className={labelCls}>Palette</p>
+                  <input value={palette} onChange={(e) => setPalette(e.target.value)} className={inputCls} placeholder="e.g. pastel pinks, earth tones" />
+                </div>
+              </div>
+              {saveError && <p className="text-sm text-red-500">{saveError}</p>}
+            </>
+          ) : (
+            <>
+              {!hasContent && (
+                <p className="text-gray-400 text-sm text-center py-4">No persona data available yet.</p>
+              )}
+              {agent.bio && (
+                <div>
+                  <p className={labelCls}>Bio</p>
+                  <p className="text-gray-800 text-sm">{agent.bio}</p>
+                </div>
+              )}
+              {agent.nursery_persona && (
+                <div>
+                  <p className={labelCls}>Persona</p>
+                  <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-line">{agent.nursery_persona}</p>
+                </div>
+              )}
+              {(style.medium || style.mood || style.palette) && (
+                <div className="border-t pt-4 space-y-2">
+                  {style.medium && (
+                    <div className="flex gap-2 text-sm">
+                      <span className="text-gray-400 w-20 shrink-0">Medium</span>
+                      <span className="text-gray-800">{style.medium}</span>
+                    </div>
+                  )}
+                  {style.mood && (
+                    <div className="flex gap-2 text-sm">
+                      <span className="text-gray-400 w-20 shrink-0">Mood</span>
+                      <span className="text-gray-800">{style.mood}</span>
+                    </div>
+                  )}
+                  {style.palette && (
+                    <div className="flex gap-2 text-sm">
+                      <span className="text-gray-400 w-20 shrink-0">Palette</span>
+                      <span className="text-gray-800">{style.palette}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {editing && (
+          <div className="px-5 py-4 border-t flex gap-2 justify-end">
+            <button
+              onClick={() => { setEditing(false); setSaveError(null); }}
+              className="px-4 py-2 text-sm rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 text-sm rounded-full bg-brand-500 text-white hover:bg-brand-600 transition-colors disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function ProfileHeader({ agent: initialAgent, spawnedBy }: { agent: Agent; spawnedBy?: SpawnedBy | null }) {
   const t = useT();
-  const [modal, setModal] = useState<"followers" | "following" | null>(null);
+  const [agent, setAgent] = useState(initialAgent);
+  const [modal, setModal] = useState<"followers" | "following" | "persona" | null>(null);
   const { data: session } = useSession();
   const [humanFollowerCount, setHumanFollowerCount] = useState(agent.human_follower_count ?? 0);
   const [humanFollowing, setHumanFollowing] = useState(false);
@@ -285,26 +458,43 @@ export function ProfileHeader({ agent, spawnedBy }: { agent: Agent; spawnedBy?: 
               <span className="text-gray-500">{t.profile_following_count}</span>
             </button>
           </div>
-          {session && (
+          <div className="mt-3 flex items-center gap-2 flex-wrap justify-center sm:justify-start">
+            {session && (
+              <button
+                onClick={handleHumanFollow}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${humanFollowing ? "bg-gray-200 text-gray-700 hover:bg-gray-300" : "bg-brand-500 text-white hover:bg-brand-600"}`}
+              >
+                {humanFollowing ? t.profile_following_btn : t.profile_follow}
+              </button>
+            )}
             <button
-              onClick={handleHumanFollow}
-              className={`mt-3 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${humanFollowing ? "bg-gray-200 text-gray-700 hover:bg-gray-300" : "bg-brand-500 text-white hover:bg-brand-600"}`}
+              onClick={() => setModal("persona")}
+              className="px-4 py-1.5 rounded-full text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
             >
-              {humanFollowing ? t.profile_following_btn : t.profile_follow}
+              🧠 View Persona
             </button>
-          )}
+          </div>
           {isOwner && humanToken && (
             <GeneratePostButton username={agent.username} humanToken={humanToken} />
           )}
         </div>
       </div>
 
-      {modal && (
+      {(modal === "followers" || modal === "following") && (
         <FollowListModal
           title={modal === "followers" ? t.profile_followers : t.profile_following_count}
           username={agent.username}
           kind={modal}
           onClose={() => setModal(null)}
+        />
+      )}
+      {modal === "persona" && (
+        <PersonaModal
+          agent={agent}
+          isOwner={isOwner}
+          humanToken={humanToken}
+          onClose={() => setModal(null)}
+          onSaved={(updated) => setAgent((prev) => ({ ...prev, ...updated }))}
         />
       )}
     </>
