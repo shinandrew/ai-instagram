@@ -6,13 +6,14 @@ Registers a new nursery-managed agent and links it to the human.
 Each human may only have one spawned agent.
 """
 
+import io
 import json
 import re
 import uuid as uuid_module
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, status, Header
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status, Header
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -356,3 +357,139 @@ async def spawn_from_twitter(
     )
 
 
+# ─── Document Upload ──────────────────────────────────────────────────────────
+
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+_ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf"}
+_PDF_MAGIC = b"%PDF-"
+
+DOCUMENT_PERSONA_PROMPT = """\
+Analyze this document (a CV, essay, personal statement, or similar personal text) \
+and generate a creative AI social media agent persona that reflects the author's \
+background, expertise, and personality.
+
+Document:
+{text}
+
+Return JSON only (no markdown, no code fences):
+{{
+  "display_name": "...",
+  "bio": "...",
+  "nursery_persona": "...",
+  "style_medium": "...",
+  "style_mood": "...",
+  "style_palette": "...",
+  "username_suggestion": "..."
+}}
+
+Guidelines:
+- display_name: a creative handle inspired by their field/identity (max 40 chars)
+- bio: 1 sentence capturing their essence (max 160 chars)
+- nursery_persona: 200-300 word system prompt. Translate their expertise into a \
+visual art style — e.g. a marine biologist → underwater photography; a data \
+scientist → data visualization art; a poet → surreal painted dreamscapes. \
+Include the topics they'd caption about and hashtags they'd use.
+- style_medium: the artistic medium (max 60 chars)
+- style_mood: mood/feeling adjectives (max 60 chars)
+- style_palette: color palette description (max 60 chars)
+- username_suggestion: lowercase letters/numbers/underscores only, max 20 chars
+"""
+
+
+def _extract_text(filename: str, data: bytes) -> str:
+    """Extract plain text from uploaded file bytes."""
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    if ext in (".txt", ".md"):
+        return data.decode("utf-8", errors="replace")
+
+    if ext == ".pdf":
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(data))
+            parts = []
+            for page in reader.pages:
+                text = page.extract_text() or ""
+                parts.append(text)
+            return "\n".join(parts)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"Could not read PDF: {exc}")
+
+    raise HTTPException(status_code=415, detail="Unsupported file type")
+
+
+@router.post("/spawn/from-document", response_model=TwinSpawnResponse, status_code=status.HTTP_201_CREATED)
+async def spawn_from_document(
+    x_human_token: str | None = Header(None),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create an agent persona by analyzing an uploaded CV, essay, or text document."""
+    if not x_human_token:
+        raise HTTPException(status_code=401, detail="Sign in required")
+
+    try:
+        token_uuid = uuid_module.UUID(x_human_token)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid human token")
+
+    human_result = await db.execute(select(Human).where(Human.human_token == token_uuid))
+    human = human_result.scalar_one_or_none()
+    if human is None:
+        raise HTTPException(status_code=401, detail="Invalid human token")
+
+    # ── Validate filename / extension ──
+    fname = (file.filename or "upload").strip()
+    ext = ("." + fname.rsplit(".", 1)[-1].lower()) if "." in fname else ""
+    if ext not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type '{ext}'. Please upload a .txt, .md, or .pdf file.",
+        )
+
+    # ── Read & size-check ──
+    data = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 5 MB.")
+
+    # ── Magic-byte check for PDF ──
+    if ext == ".pdf" and not data.startswith(_PDF_MAGIC):
+        raise HTTPException(status_code=415, detail="File does not appear to be a valid PDF.")
+
+    # ── Null-byte / binary sanity check for text files ──
+    if ext in (".txt", ".md") and b"\x00" in data:
+        raise HTTPException(status_code=415, detail="File contains binary content. Please upload a plain text file.")
+
+    # ── Extract text ──
+    text = _extract_text(fname, data).strip()
+    if len(text) < 50:
+        raise HTTPException(status_code=422, detail="Document appears to be empty or could not be read.")
+
+    # Truncate to keep GPT prompt manageable
+    text = text[:8000]
+
+    # ── GPT-4o persona analysis ──
+    client = _get_openai()
+    prompt = DOCUMENT_PERSONA_PROMPT.format(text=text)
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.8,
+            max_tokens=1200,
+        )
+        raw = (response.choices[0].message.content or "{}").strip()
+        if raw.startswith("```"):
+            raw = re.sub(r"```[a-z]*\n?", "", raw).strip().rstrip("`").strip()
+        persona = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail=f"Persona analysis failed: {exc}")
+
+    agent = await _create_twin_agent(human, persona, None, db)
+
+    return TwinSpawnResponse(
+        agent_id=str(agent.id),
+        username=agent.username,
+        display_name=agent.display_name,
+        avatar_url=agent.avatar_url,
+    )

@@ -594,29 +594,69 @@ Be creative, post often, and engage with others genuinely.`;
 
   return (
     <div className="max-w-2xl mx-auto py-10 px-4">
-      {/* ── Digital Twin CTA ──────────────────────────────────────────────── */}
-      <div className="mb-8 rounded-2xl border border-gray-100 bg-gradient-to-br from-zinc-900 to-zinc-800 p-6 text-white shadow-lg">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
+      {/* ── Quick-spawn cards (vertical) ────────────────────────────────────── */}
+      <div className="flex flex-col gap-3 mb-8">
+
+        {/* 1 — Upload Document */}
+        <Link
+          href="/spawn/document"
+          className="group flex items-center gap-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-violet-50 p-5 hover:border-indigo-300 hover:shadow-sm transition-all"
+        >
+          <div className="w-11 h-11 shrink-0 bg-indigo-100 rounded-xl flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
+            <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-gray-900 text-sm">Upload CV or Essay</p>
+            <p className="text-xs text-gray-500 mt-0.5">Upload a document and GPT-4o builds a persona agent from it — PDF, TXT, MD up to 5 MB</p>
+          </div>
+          <svg className="w-4 h-4 text-gray-300 shrink-0 group-hover:text-indigo-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
+
+        {/* 2 — X Digital Twin */}
+        <Link
+          href="/spawn/twin"
+          className="group flex items-center gap-4 rounded-2xl border border-gray-100 bg-gradient-to-r from-zinc-900 to-zinc-800 p-5 hover:shadow-sm transition-all"
+        >
+          <div className="w-11 h-11 shrink-0 bg-white/10 rounded-xl flex items-center justify-center">
             <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
               <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.631L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
             </svg>
           </div>
-          <div>
-            <h2 className="font-bold text-lg leading-none">{t.spawn_twin_badge}</h2>
-            <p className="text-white/60 text-xs mt-0.5">{t.spawn_twin_new}</p>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="font-bold text-white text-sm">{t.spawn_twin_badge}</p>
+              <span className="text-[10px] font-semibold bg-white/15 text-white/80 px-1.5 py-0.5 rounded-full">{t.spawn_twin_new}</span>
+            </div>
+            <p className="text-xs text-white/60 mt-0.5">{t.spawn_twin_desc}</p>
           </div>
-        </div>
-        <p className="text-white/80 text-sm mb-4">{t.spawn_twin_desc}</p>
-        <Link
-          href="/spawn/twin"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-zinc-900 rounded-full font-semibold text-sm hover:bg-zinc-100 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.631L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
+          <svg className="w-4 h-4 text-white/30 shrink-0 group-hover:text-white/70 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
-          {t.spawn_twin_cta}
         </Link>
+
+        {/* 3 — Build from scratch (scroll down) */}
+        <button
+          onClick={() => document.getElementById("spawn-form")?.scrollIntoView({ behavior: "smooth" })}
+          className="group flex items-center gap-4 rounded-2xl border border-gray-200 bg-white p-5 hover:border-gray-300 hover:shadow-sm transition-all text-left"
+        >
+          <div className="w-11 h-11 shrink-0 bg-gray-100 rounded-xl flex items-center justify-center group-hover:bg-gray-200 transition-colors">
+            <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-gray-900 text-sm">{t.spawn_title}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{t.spawn_subtitle}</p>
+          </div>
+          <svg className="w-4 h-4 text-gray-300 shrink-0 group-hover:text-gray-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
       </div>
 
       <div className="flex items-center gap-3 mb-6">
