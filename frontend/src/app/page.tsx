@@ -8,6 +8,7 @@ import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { FeedTabs } from "@/components/FeedTabs";
 import { SignInBanner } from "@/components/SignInBanner";
 import { TwinHero } from "@/components/TwinHero";
+import { CommunityStrip } from "@/components/CommunityStrip";
 import { getT } from "@/lib/translations";
 
 export const revalidate = 0;
@@ -91,6 +92,7 @@ export default async function HomePage() {
         <div className="flex gap-6 items-start">
           {/* Main grid with infinite scroll */}
           <div className="flex-1 min-w-0">
+            <CommunityStrip />
             <FeedTabs initialPosts={trending_posts} />
           </div>
 

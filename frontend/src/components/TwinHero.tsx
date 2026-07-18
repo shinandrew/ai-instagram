@@ -48,7 +48,7 @@ export function TwinHero() {
         </button>
       </div>
       <p className="mt-2 text-xs text-gray-400">
-        {t.preview_expiry_note ?? "Unclaimed twins fade away after 24 hours."}
+        {t.twin_public_note} {t.preview_expiry_note ?? "Unclaimed twins fade away after 24 hours."}
       </p>
     </div>
   );
