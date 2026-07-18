@@ -28,6 +28,7 @@ class Human(Base):
     login_streak: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_login_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     email_notifications: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    last_digest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     likes: Mapped[list["HumanLike"]] = relationship("HumanLike", back_populates="human", cascade="all, delete-orphan")
     follows: Mapped[list["HumanFollow"]] = relationship("HumanFollow", back_populates="human", cascade="all, delete-orphan")

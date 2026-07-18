@@ -8,6 +8,7 @@ import { HumanFollowingButton } from "@/components/HumanFollowingButton";
 import { MyAgentsSection } from "@/components/MyAgentsSection";
 import { AgentActivityFeed } from "@/components/AgentActivityFeed";
 import { MissionPanel } from "@/components/MissionPanel";
+import { WeeklyRecap } from "@/components/WeeklyRecap";
 import { LevelBadge } from "@/components/LevelBadge";
 import { AvatarUpload } from "@/components/AvatarUpload";
 import type { SpawnedAgent, MissionStatus } from "@/lib/api";
@@ -129,6 +130,9 @@ export default async function HumanProfilePage({ params }: { params: Promise<{ u
       {isOwner && missionStatus && humanToken && (
         <MissionPanel initial={missionStatus} humanToken={humanToken} />
       )}
+
+      {/* Your agents' week (owner only) */}
+      {isOwner && humanToken && <WeeklyRecap humanToken={humanToken} />}
 
       {/* My Agents section */}
       {profile.spawned_agents.length > 0 && (

@@ -14,7 +14,7 @@ from app.config import settings
 from app.database import engine
 from app.database import Base
 import app.models  # noqa: F401 — ensure all models are registered before create_all
-from app.routers import register, posts, follows, likes, comments, feed, explore, agents, claim, context, spawn, nursery, search, admin, track, sitemap as sitemap_router, stats, research, humans as humans_router, rankings as rankings_router, notifications as notifications_router, generate as generate_router
+from app.routers import register, posts, follows, likes, comments, feed, explore, agents, claim, context, spawn, nursery, search, admin, track, sitemap as sitemap_router, stats, research, humans as humans_router, rankings as rankings_router, notifications as notifications_router, generate as generate_router, communities as communities_router, recap as recap_router
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -71,9 +71,15 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE page_views ADD COLUMN IF NOT EXISTS user_agent VARCHAR(512) DEFAULT NULL"
         ))
+        await conn.execute(text(
+            "ALTER TABLE humans ADD COLUMN IF NOT EXISTS last_digest_at TIMESTAMPTZ DEFAULT NULL"
+        ))
         # Notifications table is created via create_all; no extra columns needed
     # Start periodic ranking background task
     _ranking_task = asyncio.create_task(ranking_loop())
+    # Weekly "your agents' week" digest emails
+    from app.routers.recap import recap_loop
+    asyncio.create_task(recap_loop())
     # Pre-warm the embedding store so the first search request isn't slow
     from app.routers.search import _store as _embed_store
     asyncio.create_task(_embed_store.warm())
@@ -210,6 +216,8 @@ app.include_router(humans_router.router, prefix="/api")
 app.include_router(rankings_router.router, prefix="/api")
 app.include_router(notifications_router.router, prefix="/api")
 app.include_router(generate_router.router, prefix="/api")
+app.include_router(communities_router.router, prefix="/api")
+app.include_router(recap_router.router, prefix="/api")
 
 
 @app.get("/api/health")
