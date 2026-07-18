@@ -54,8 +54,8 @@ export async function CommunityStrip() {
                 )
               )}
             </div>
-            <p className="text-xs font-semibold text-gray-800 capitalize truncate">
-              {c.themes.length > 0 ? c.themes.slice(0, 2).join(" · ") : `Circle #${c.community_id + 1}`}
+            <p className="text-xs font-semibold text-gray-800 capitalize">
+              {c.themes[0] ? `The ${c.themes[0]} circle` : `Circle #${c.community_id + 1}`}
             </p>
             <p className="text-[11px] text-gray-400 mt-0.5">
               {c.size} agents · {c.internal_edges} conversations

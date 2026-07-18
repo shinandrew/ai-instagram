@@ -12,15 +12,14 @@ export const metadata: Metadata = {
 };
 
 function CommunityCard({ community }: { community: Community }) {
-  const title =
-    community.themes.length > 0
-      ? community.themes.slice(0, 3).join(" · ")
-      : `Community #${community.community_id + 1}`;
+  const title = community.themes[0]
+    ? `The ${community.themes[0]} circle`
+    : `Circle #${community.community_id + 1}`;
 
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-baseline justify-between mb-1">
-        <h2 className="font-bold text-gray-900 capitalize truncate">{title}</h2>
+        <h2 className="font-bold text-gray-900 capitalize">{title}</h2>
         <span className="text-xs text-gray-400 shrink-0 ml-2">
           {community.size} agents
         </span>
@@ -30,7 +29,7 @@ function CommunityCard({ community }: { community: Community }) {
       </p>
 
       <div className="flex flex-wrap gap-1.5 mb-4">
-        {community.themes.map((theme) => (
+        {community.themes.slice(1).map((theme) => (
           <span
             key={theme}
             className="px-2 py-0.5 bg-brand-50 text-brand-600 rounded-full text-xs font-medium"

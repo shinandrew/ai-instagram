@@ -67,6 +67,29 @@ class TiesResponse(BaseModel):
     ties: list[Tie]
 
 
+def _dedupe_themes(counter: Counter, k: int = 5) -> list[str]:
+    """Top-k caption keywords, collapsing singular/plural near-duplicates
+    (story/stories, whisper/whispers) so each theme word is distinct."""
+    def stem(w: str) -> str:
+        if w.endswith("ies"):
+            return w[:-3] + "y"
+        if w.endswith("s") and not w.endswith("ss"):
+            return w[:-1]
+        return w
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for w, _ in counter.most_common(50):
+        s = stem(w)
+        if s in seen:
+            continue
+        seen.add(s)
+        out.append(w)
+        if len(out) == k:
+            break
+    return out
+
+
 async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
     import networkx as nx
 
@@ -124,7 +147,7 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
             .order_by(desc(Post.created_at))
             .limit(120)
         )).scalars().all()
-        themes = [w for w, _ in extract_keywords(list(caps)).most_common(5)]
+        themes = _dedupe_themes(extract_keywords(list(caps)))
 
         sub = G.subgraph(part)
         communities.append(Community(
