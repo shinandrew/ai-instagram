@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSession, signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { getHumanToken } from "@/lib/humanAuth";
@@ -9,10 +10,11 @@ import { useT } from "@/components/LanguageProvider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-type Step = "connect" | "creating" | "persona" | "success" | "error";
+type Step = "connect" | "creating" | "preview" | "claiming" | "success" | "error";
 
-interface CreatedAgent {
-  username: string;
+interface TwinPreview {
+  preview_id: string;
+  handle: string;
   display_name: string;
   avatar_url: string | null;
   bio?: string | null;
@@ -20,81 +22,128 @@ interface CreatedAgent {
   style_medium?: string | null;
   style_mood?: string | null;
   style_palette?: string | null;
+  sample_caption?: string | null;
 }
 
-export default function SpawnTwinPage() {
-  const { data: session, status: sessionStatus } = useSession();
+interface ClaimedAgent {
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+}
+
+function SpawnTwinInner() {
+  const { data: session } = useSession();
   const t = useT();
+  const searchParams = useSearchParams();
 
   const [step, setStep] = useState<Step>("connect");
   const [twitterUsername, setTwitterUsername] = useState("");
   const [postingLanguage, setPostingLanguage] = useState("en");
-  const [createdAgent, setCreatedAgent] = useState<CreatedAgent | null>(null);
+  const [preview, setPreview] = useState<TwinPreview | null>(null);
+  const [claimedAgent, setClaimedAgent] = useState<ClaimedAgent | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const bootRef = useRef(false);
 
-  const handleGenerate = async () => {
-    const humanToken = await getHumanToken();
-    if (!humanToken) { signIn("google"); return; }
+  const inviteUsername = searchParams.get("invite") ?? "";
 
-    const handle = twitterUsername.trim().replace(/^@/, "");
+  // ── Generate a preview (PUBLIC — no sign-in needed) ──────────────────────
+  const handleGenerate = async (handleOverride?: string) => {
+    const handle = (handleOverride ?? twitterUsername).trim().replace(/^@/, "");
     if (!handle) return;
-
+    setTwitterUsername(handle);
     setStep("creating");
     setErrorMsg("");
 
     try {
-      const res = await fetch(`${API_URL}/api/spawn/from-twitter`, {
+      const res = await fetch(`${API_URL}/api/spawn/preview-twitter`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Human-Token": humanToken,
-        },
-        body: JSON.stringify({ twitter_username: handle, language: postingLanguage }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          twitter_username: handle,
+          language: postingLanguage,
+          invite_username: inviteUsername,
+        }),
       });
-
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail ?? "Request failed");
       }
-
-      const data = await res.json();
-      setCreatedAgent({
-        username: data.username,
-        display_name: data.display_name,
-        avatar_url: data.avatar_url,
-        bio: data.bio,
-        nursery_persona: data.nursery_persona,
-        style_medium: data.style_medium,
-        style_mood: data.style_mood,
-        style_palette: data.style_palette,
-      });
-      setStep("persona");
-    } catch (err: any) {
-      setErrorMsg(err.message ?? "Something went wrong. Please try again.");
+      const data: TwinPreview = await res.json();
+      setPreview(data);
+      setStep("preview");
+      // Keep the preview id in the URL so the sign-in round-trip resumes here
+      const url = new URL(window.location.href);
+      url.searchParams.set("preview", data.preview_id);
+      url.searchParams.delete("handle");
+      window.history.replaceState({}, "", url.toString());
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       setStep("error");
     }
   };
 
-  // ── Not signed in ────────────────────────────────────────────────────────
-  if (sessionStatus === "unauthenticated") {
-    return (
-      <div className="max-w-lg mx-auto py-20 text-center">
-        <p className="text-5xl mb-4">🤖</p>
-        <h1 className="text-2xl font-bold mb-2">{t.twin_sign_in_title}</h1>
-        <p className="text-gray-500 mb-6">{t.twin_sign_in_link}</p>
-        <button
-          onClick={() => signIn("google")}
-          className="px-6 py-3 bg-brand-500 text-white rounded-full font-semibold hover:bg-brand-600 transition-colors"
-        >
-          {t.sign_in}
-        </button>
-      </div>
-    );
-  }
+  // ── Claim the previewed twin (requires sign-in) ──────────────────────────
+  const handleClaim = async (previewId?: string) => {
+    const id = previewId ?? preview?.preview_id;
+    if (!id) return;
 
-  if (sessionStatus === "loading") {
-    return <div className="max-w-lg mx-auto py-20 text-center text-gray-400">{t.twin_loading}</div>;
-  }
+    const humanToken = await getHumanToken();
+    if (!humanToken) {
+      signIn("google", { callbackUrl: `/spawn/twin?preview=${id}` });
+      return;
+    }
+
+    setStep("claiming");
+    try {
+      const res = await fetch(`${API_URL}/api/spawn/claim-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Human-Token": humanToken },
+        body: JSON.stringify({ preview_id: id }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Claim failed");
+      }
+      const data = await res.json();
+      setClaimedAgent({
+        username: data.username,
+        display_name: data.display_name,
+        avatar_url: data.avatar_url,
+      });
+      setStep("success");
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setStep("error");
+    }
+  };
+
+  // ── Boot: resume from ?preview= (post-sign-in) or auto-start from ?handle= ─
+  useEffect(() => {
+    if (bootRef.current) return;
+    bootRef.current = true;
+
+    const previewId = searchParams.get("preview");
+    const handleParam = searchParams.get("handle");
+
+    if (previewId) {
+      (async () => {
+        try {
+          const res = await fetch(`${API_URL}/api/spawn/preview/${previewId}`);
+          if (!res.ok) throw new Error("Preview expired — generate a new one");
+          const data: TwinPreview = await res.json();
+          setPreview(data);
+          setTwitterUsername(data.handle);
+          setStep("preview");
+        } catch (err: unknown) {
+          setErrorMsg(err instanceof Error ? err.message : "Preview not found");
+          setStep("error");
+        }
+      })();
+    } else if (handleParam) {
+      handleGenerate(handleParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Creating ─────────────────────────────────────────────────────────────
   if (step === "creating") {
@@ -109,98 +158,134 @@ export default function SpawnTwinPage() {
     );
   }
 
-  // ── Persona preview ───────────────────────────────────────────────────────
-  if (step === "persona" && createdAgent) {
+  // ── Claiming ─────────────────────────────────────────────────────────────
+  if (step === "claiming") {
+    return (
+      <div className="max-w-lg mx-auto py-24 text-center">
+        <div className="text-5xl mb-6 animate-pulse">✨</div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">{t.preview_claiming ?? "Claiming your twin…"}</h2>
+      </div>
+    );
+  }
+
+  // ── Preview — the magic moment, shown BEFORE sign-in ─────────────────────
+  if (step === "preview" && preview) {
     return (
       <div className="max-w-lg mx-auto py-12 px-4">
         <div className="text-center mb-6">
-          <div className="text-4xl mb-3">🧠</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-1">Persona Analyzed</h2>
-          <p className="text-gray-500 text-sm">Here&apos;s the AI persona built for <strong>@{createdAgent.username}</strong></p>
+          <div className="text-4xl mb-3">🧬</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-1">{t.preview_meet_title ?? "Here's your AI twin"}</h2>
+          <p className="text-gray-500 text-sm">{t.preview_meet_desc ?? "Built from your public posts. This is how it will live on AI·gram."}</p>
         </div>
 
-        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4 mb-6">
-          {createdAgent.bio && (
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4 mb-4">
+          <div className="flex items-center gap-4">
+            {preview.avatar_url ? (
+              <Image
+                src={preview.avatar_url}
+                alt={preview.display_name}
+                width={64}
+                height={64}
+                className="rounded-full object-cover w-16 h-16"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-brand-500 to-purple-400 flex items-center justify-center text-white text-2xl font-bold">
+                {preview.display_name[0]?.toUpperCase() ?? "?"}
+              </div>
+            )}
+            <div>
+              <p className="font-bold text-gray-900">{preview.display_name}</p>
+              <p className="text-sm text-gray-400">from @{preview.handle}</p>
+            </div>
+          </div>
+
+          {preview.bio && (
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Bio</p>
-              <p className="text-gray-800 text-sm">{createdAgent.bio}</p>
+              <p className="text-gray-800 text-sm">{preview.bio}</p>
             </div>
           )}
-          {createdAgent.nursery_persona && (
+
+          {preview.sample_caption && (
+            <div className="bg-brand-50 border border-brand-100 rounded-xl p-3">
+              <p className="text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1">
+                {t.preview_first_post ?? "First post draft"}
+              </p>
+              <p className="text-gray-800 text-sm italic">&ldquo;{preview.sample_caption}&rdquo;</p>
+            </div>
+          )}
+
+          {preview.nursery_persona && (
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Persona</p>
-              <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-line">{createdAgent.nursery_persona}</p>
+              <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-line line-clamp-6">{preview.nursery_persona}</p>
             </div>
           )}
-          {(createdAgent.style_medium || createdAgent.style_mood || createdAgent.style_palette) && (
-            <div className="border-t pt-4 grid grid-cols-1 gap-2">
-              {createdAgent.style_medium && (
-                <div className="flex gap-2 text-sm">
-                  <span className="text-gray-400 w-20 shrink-0">Medium</span>
-                  <span className="text-gray-800">{createdAgent.style_medium}</span>
-                </div>
-              )}
-              {createdAgent.style_mood && (
-                <div className="flex gap-2 text-sm">
-                  <span className="text-gray-400 w-20 shrink-0">Mood</span>
-                  <span className="text-gray-800">{createdAgent.style_mood}</span>
-                </div>
-              )}
-              {createdAgent.style_palette && (
-                <div className="flex gap-2 text-sm">
-                  <span className="text-gray-400 w-20 shrink-0">Palette</span>
-                  <span className="text-gray-800">{createdAgent.style_palette}</span>
-                </div>
-              )}
+
+          {(preview.style_medium || preview.style_mood || preview.style_palette) && (
+            <div className="border-t pt-4 flex flex-wrap gap-2">
+              {[preview.style_medium, preview.style_mood, preview.style_palette].filter(Boolean).map((s) => (
+                <span key={s} className="px-2.5 py-1 bg-gray-100 rounded-full text-xs text-gray-600">{s}</span>
+              ))}
             </div>
           )}
         </div>
 
         <button
-          onClick={() => setStep("success")}
-          className="w-full py-3 bg-brand-500 text-white rounded-full font-semibold hover:bg-brand-600 transition-colors"
+          onClick={() => handleClaim()}
+          className="w-full py-3.5 bg-brand-500 text-white rounded-full font-semibold hover:bg-brand-600 transition-colors shadow-sm"
         >
-          View Agent Profile →
+          {t.preview_claim_cta ?? "Claim your twin — sign in to keep it"}
+        </button>
+        <p className="mt-3 text-center text-xs text-gray-400">
+          {t.preview_expiry_note ?? "Unclaimed twins fade away after 24 hours."}
+        </p>
+
+        <button
+          onClick={() => { setStep("connect"); setPreview(null); setTwitterUsername(""); }}
+          className="mt-4 w-full text-center text-sm text-gray-400 hover:text-gray-600"
+        >
+          {t.twin_create_another}
         </button>
       </div>
     );
   }
 
   // ── Success ───────────────────────────────────────────────────────────────
-  if (step === "success" && createdAgent) {
+  if (step === "success" && claimedAgent) {
     return (
       <div className="max-w-lg mx-auto py-16 px-4 text-center">
         <div className="text-5xl mb-4">🎉</div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">{t.twin_success_title}</h2>
-        <p className="text-gray-500 mb-8">{t.twin_success_desc}</p>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">{t.preview_claimed_title ?? t.twin_success_title}</h2>
+        <p className="text-gray-500 mb-8">{t.preview_claimed_desc ?? t.twin_success_desc}</p>
 
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm mb-8">
-          {createdAgent.avatar_url ? (
+          {claimedAgent.avatar_url ? (
             <Image
-              src={createdAgent.avatar_url}
-              alt={createdAgent.display_name}
+              src={claimedAgent.avatar_url}
+              alt={claimedAgent.display_name}
               width={72}
               height={72}
               className="rounded-full mx-auto mb-3 object-cover"
             />
           ) : (
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-brand-500 to-purple-400 flex items-center justify-center text-white text-2xl font-bold mx-auto mb-3">
-              {createdAgent.display_name[0]?.toUpperCase() ?? "?"}
+              {claimedAgent.display_name[0]?.toUpperCase() ?? "?"}
             </div>
           )}
-          <p className="font-semibold text-gray-900">{createdAgent.display_name}</p>
-          <p className="text-sm text-gray-400">@{createdAgent.username}</p>
+          <p className="font-semibold text-gray-900">{claimedAgent.display_name}</p>
+          <p className="text-sm text-gray-400">@{claimedAgent.username}</p>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Link
-            href={`/agents/${createdAgent.username}`}
+            href={`/agents/${claimedAgent.username}`}
             className="px-6 py-3 bg-brand-500 text-white rounded-full font-semibold hover:bg-brand-600 transition-colors"
           >
             {t.twin_view}
           </Link>
           <button
-            onClick={() => { setStep("connect"); setCreatedAgent(null); setTwitterUsername(""); }}
+            onClick={() => { setStep("connect"); setPreview(null); setClaimedAgent(null); setTwitterUsername(""); }}
             className="px-6 py-3 border border-gray-200 text-gray-700 rounded-full font-semibold hover:bg-gray-50 transition-colors"
           >
             {t.twin_create_another}
@@ -227,7 +312,7 @@ export default function SpawnTwinPage() {
     );
   }
 
-  // ── Enter X username ──────────────────────────────────────────────────────
+  // ── Enter X username (works signed-out — preview is free) ────────────────
   return (
     <div className="max-w-xl mx-auto py-16 px-4">
       <div className="text-center mb-10">
@@ -238,6 +323,11 @@ export default function SpawnTwinPage() {
         </div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">{t.twin_page_title}</h1>
         <p className="text-gray-500 max-w-sm mx-auto">{t.twin_page_desc}</p>
+        {!session && (
+          <p className="mt-2 text-sm text-brand-500 font-medium">
+            {t.preview_hero_sub ?? "Enter your X handle and watch your twin come to life — no account needed."}
+          </p>
+        )}
       </div>
 
       <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm mb-6">
@@ -296,7 +386,7 @@ export default function SpawnTwinPage() {
           />
         </div>
         <button
-          onClick={handleGenerate}
+          onClick={() => handleGenerate()}
           disabled={!twitterUsername.trim()}
           className="px-6 py-3.5 bg-black text-white rounded-full font-semibold text-sm hover:bg-zinc-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
         >
@@ -313,5 +403,13 @@ export default function SpawnTwinPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function SpawnTwinPage() {
+  return (
+    <Suspense fallback={<div className="max-w-lg mx-auto py-20 text-center text-gray-400">…</div>}>
+      <SpawnTwinInner />
+    </Suspense>
   );
 }

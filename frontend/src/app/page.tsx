@@ -7,6 +7,7 @@ import { api, Agent } from "@/lib/api";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { FeedTabs } from "@/components/FeedTabs";
 import { SignInBanner } from "@/components/SignInBanner";
+import { TwinHero } from "@/components/TwinHero";
 import { getT } from "@/lib/translations";
 
 export const revalidate = 0;
@@ -39,8 +40,14 @@ export default async function HomePage() {
       <div className="mb-8 text-center">
         <p className="mt-2 text-base text-gray-900">{t.hero_tagline}</p>
         <p className="mt-1 text-base font-medium text-gray-900">{t.hero_subtitle}</p>
-        <div className="mt-5 w-full max-w-xs mx-auto border border-gray-200 rounded-2xl p-3 bg-gray-50">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest text-center mb-3">
+
+        {/* Twin preview funnel — the magic moment before sign-up */}
+        <div className="mt-6 mb-6 border border-gray-200 rounded-3xl px-6 py-8 bg-gradient-to-b from-white to-brand-50 shadow-sm">
+          <TwinHero />
+        </div>
+
+        <div className="w-full max-w-xs mx-auto border border-brand-200 rounded-2xl p-3 bg-brand-50">
+          <p className="text-xs font-bold text-brand-500 uppercase tracking-widest text-center mb-3">
             Create an Agent
           </p>
           <div className="flex flex-col gap-2">

@@ -303,32 +303,11 @@ class TwinSpawnResponse(BaseModel):
     style_palette: str | None = None
 
 
-@router.post("/spawn/from-twitter", response_model=TwinSpawnResponse, status_code=status.HTTP_201_CREATED)
-async def spawn_from_twitter(
-    body: TwitterTwinRequest,
-    x_human_token: str | None = Header(None),
-    db: AsyncSession = Depends(get_db),
-):
-    """Create a Digital Twin by fetching public tweets via Bearer Token."""
-    if not x_human_token:
-        raise HTTPException(status_code=401, detail="Sign in required")
-    if not settings.twitter_bearer_token:
-        raise HTTPException(status_code=503, detail="Twitter API not configured")
+async def _fetch_twitter_profile(handle: str) -> tuple[str, str, list[str]]:
+    """Fetch an X user's name, avatar and recent original tweets.
 
-    try:
-        token_uuid = uuid_module.UUID(x_human_token)
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid human token")
-
-    human_result = await db.execute(select(Human).where(Human.human_token == token_uuid))
-    human = human_result.scalar_one_or_none()
-    if human is None:
-        raise HTTPException(status_code=401, detail="Invalid human token")
-
-    handle = body.twitter_username.lstrip("@").strip()
-    if not handle:
-        raise HTTPException(status_code=422, detail="twitter_username cannot be empty")
-
+    Returns (display_name, avatar_url, tweets). Raises HTTPException on API errors.
+    """
     bearer = f"Bearer {settings.twitter_bearer_token}"
 
     async with httpx.AsyncClient() as client:
@@ -376,6 +355,37 @@ async def spawn_from_twitter(
 
     if not tweets:
         raise HTTPException(status_code=422, detail=f"No public tweets found for @{handle}. The account may be private or have no posts.")
+
+    return twitter_name, avatar_url, tweets
+
+
+@router.post("/spawn/from-twitter", response_model=TwinSpawnResponse, status_code=status.HTTP_201_CREATED)
+async def spawn_from_twitter(
+    body: TwitterTwinRequest,
+    x_human_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a Digital Twin by fetching public tweets via Bearer Token."""
+    if not x_human_token:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    if not settings.twitter_bearer_token:
+        raise HTTPException(status_code=503, detail="Twitter API not configured")
+
+    try:
+        token_uuid = uuid_module.UUID(x_human_token)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid human token")
+
+    human_result = await db.execute(select(Human).where(Human.human_token == token_uuid))
+    human = human_result.scalar_one_or_none()
+    if human is None:
+        raise HTTPException(status_code=401, detail="Invalid human token")
+
+    handle = body.twitter_username.lstrip("@").strip()
+    if not handle:
+        raise HTTPException(status_code=422, detail="twitter_username cannot be empty")
+
+    twitter_name, avatar_url, tweets = await _fetch_twitter_profile(handle)
 
     posts_text = "\n---\n".join(tweets)
     persona = await _analyze_persona("X (Twitter)", posts_text, twitter_name, language=body.language)
@@ -570,6 +580,242 @@ async def spawn_from_document(
         raise HTTPException(status_code=502, detail=f"Persona analysis failed: {exc}")
 
     agent = await _create_twin_agent(human, persona, None, db, language=language)
+
+    return TwinSpawnResponse(
+        agent_id=str(agent.id),
+        username=agent.username,
+        display_name=agent.display_name,
+        avatar_url=agent.avatar_url,
+        bio=persona.get("bio") or None,
+        nursery_persona=persona.get("nursery_persona") or None,
+        style_medium=persona.get("style_medium") or None,
+        style_mood=persona.get("style_mood") or None,
+        style_palette=persona.get("style_palette") or None,
+    )
+
+
+# ─── Public Twin Preview — the magic moment before sign-up ──────────────────
+#
+# Flow: visitor enters an X handle on the landing page (no account needed) →
+# we analyze the persona and show it live → registration is how you KEEP the
+# twin, not how you start. Previews expire after 24h.
+
+import time as _time
+from datetime import datetime, timedelta, timezone
+
+from app.models.twin_preview import TwinPreview
+from app.models.follow import Follow
+from app.models.agent import Agent as _Agent
+from app.models.agent_memory import append_memory
+from app.routers.notifications import maybe_notify
+
+# Simple in-memory rate limiting (single-instance backend).
+_PREVIEW_BUCKET: dict[str, list[float]] = {}
+_PREVIEW_GLOBAL: list[float] = []
+_PREVIEW_IP_LIMIT = 5        # per IP per hour
+_PREVIEW_GLOBAL_LIMIT = 60   # across all IPs per hour
+
+
+def _check_preview_rate(ip: str) -> None:
+    now = _time.time()
+    cutoff = now - 3600
+    bucket = [t for t in _PREVIEW_BUCKET.get(ip, []) if t > cutoff]
+    _PREVIEW_GLOBAL[:] = [t for t in _PREVIEW_GLOBAL if t > cutoff]
+    if len(bucket) >= _PREVIEW_IP_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many previews from this address — try again in an hour.")
+    if len(_PREVIEW_GLOBAL) >= _PREVIEW_GLOBAL_LIMIT:
+        raise HTTPException(status_code=429, detail="Preview service is busy — try again shortly.")
+    bucket.append(now)
+    _PREVIEW_BUCKET[ip] = bucket
+    _PREVIEW_GLOBAL.append(now)
+
+
+async def _sample_first_post(persona: dict, language: str) -> tuple[str, str]:
+    """Generate the twin's first post idea (caption + image subject) — cheap model."""
+    client = _get_openai()
+    lang_name = _LANGUAGE_NAMES.get(language, "English")
+    prompt = (
+        "You are an AI Instagram agent with this persona:\n"
+        f"Bio: {persona.get('bio', '')}\n"
+        f"Persona: {(persona.get('nursery_persona') or '')[:600]}\n"
+        f"Style: {persona.get('style_medium', '')}, {persona.get('style_mood', '')}, "
+        f"{persona.get('style_palette', '')}\n\n"
+        "Write your FIRST post on the platform. Return JSON only:\n"
+        '{"caption": "<instagram caption in ' + lang_name + ', casual, in the persona\'s voice, max 150 chars>", '
+        '"subject": "<vivid concrete Flux image prompt in English matching the persona\'s aesthetic>"}'
+    )
+    try:
+        resp = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.9,
+            max_tokens=300,
+        )
+        raw = json.loads(resp.choices[0].message.content or "{}")
+        return raw.get("caption", ""), raw.get("subject", "")
+    except Exception:
+        return "", ""
+
+
+class TwinPreviewRequest(BaseModel):
+    twitter_username: str
+    language: str = "en"
+    invite_username: str = ""   # agent username from a friend's invite link
+
+
+class TwinPreviewResponse(BaseModel):
+    preview_id: str
+    handle: str
+    display_name: str
+    bio: str | None = None
+    nursery_persona: str | None = None
+    style_medium: str | None = None
+    style_mood: str | None = None
+    style_palette: str | None = None
+    avatar_url: str | None = None
+    sample_caption: str | None = None
+    expires_at: str
+
+
+@router.post("/spawn/preview-twitter", response_model=TwinPreviewResponse)
+async def preview_from_twitter(
+    body: TwinPreviewRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public — generate a twin persona preview from an X handle, no sign-in."""
+    if not settings.twitter_bearer_token:
+        raise HTTPException(status_code=503, detail="Twitter API not configured")
+
+    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0].strip()
+    _check_preview_rate(ip)
+
+    handle = body.twitter_username.lstrip("@").strip()
+    if not handle:
+        raise HTTPException(status_code=422, detail="twitter_username cannot be empty")
+
+    twitter_name, avatar_url, tweets = await _fetch_twitter_profile(handle)
+    posts_text = "\n---\n".join(tweets)
+    persona = await _analyze_persona("X (Twitter)", posts_text, twitter_name, language=body.language)
+    sample_caption, sample_subject = await _sample_first_post(persona, body.language)
+
+    invited_by_id = None
+    if body.invite_username:
+        inviter = (await db.execute(
+            select(_Agent).where(_Agent.username == body.invite_username.strip().lstrip("@"))
+        )).scalar_one_or_none()
+        if inviter:
+            invited_by_id = inviter.id
+
+    preview = TwinPreview(
+        source="twitter",
+        handle=handle,
+        persona_json=json.dumps(persona),
+        avatar_url=avatar_url or None,
+        sample_caption=sample_caption or None,
+        sample_subject=sample_subject or None,
+        language=body.language or "en",
+        invited_by_agent_id=invited_by_id,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+    )
+    db.add(preview)
+    await db.commit()
+    await db.refresh(preview)
+
+    return TwinPreviewResponse(
+        preview_id=str(preview.id),
+        handle=handle,
+        display_name=persona.get("display_name") or twitter_name,
+        bio=persona.get("bio") or None,
+        nursery_persona=persona.get("nursery_persona") or None,
+        style_medium=persona.get("style_medium") or None,
+        style_mood=persona.get("style_mood") or None,
+        style_palette=persona.get("style_palette") or None,
+        avatar_url=avatar_url or None,
+        sample_caption=sample_caption or None,
+        expires_at=preview.expires_at.isoformat(),
+    )
+
+
+@router.get("/spawn/preview/{preview_id}", response_model=TwinPreviewResponse)
+async def get_preview(preview_id: uuid_module.UUID, db: AsyncSession = Depends(get_db)):
+    """Public — re-fetch a preview (used after the sign-in redirect)."""
+    preview = await db.get(TwinPreview, preview_id)
+    if preview is None:
+        raise HTTPException(status_code=404, detail="Preview not found")
+    persona = json.loads(preview.persona_json)
+    return TwinPreviewResponse(
+        preview_id=str(preview.id),
+        handle=preview.handle,
+        display_name=persona.get("display_name") or preview.handle,
+        bio=persona.get("bio") or None,
+        nursery_persona=persona.get("nursery_persona") or None,
+        style_medium=persona.get("style_medium") or None,
+        style_mood=persona.get("style_mood") or None,
+        style_palette=persona.get("style_palette") or None,
+        avatar_url=preview.avatar_url,
+        sample_caption=preview.sample_caption,
+        expires_at=preview.expires_at.isoformat(),
+    )
+
+
+class ClaimPreviewRequest(BaseModel):
+    preview_id: str
+
+
+@router.post("/spawn/claim-preview", response_model=TwinSpawnResponse, status_code=status.HTTP_201_CREATED)
+async def claim_preview(
+    body: ClaimPreviewRequest,
+    x_human_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Convert an unclaimed preview into a real, living agent (sign-in required)."""
+    if not x_human_token:
+        raise HTTPException(status_code=401, detail="Sign in required to claim your twin")
+    try:
+        token_uuid = uuid_module.UUID(x_human_token)
+        preview_uuid = uuid_module.UUID(body.preview_id)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid token or preview id")
+
+    human = (await db.execute(select(Human).where(Human.human_token == token_uuid))).scalar_one_or_none()
+    if human is None:
+        raise HTTPException(status_code=401, detail="Invalid human token")
+
+    preview = await db.get(TwinPreview, preview_uuid)
+    if preview is None:
+        raise HTTPException(status_code=404, detail="Preview not found")
+    if preview.claimed_agent_id is not None:
+        raise HTTPException(status_code=409, detail="This twin has already been claimed")
+    now = datetime.now(timezone.utc)
+    expires = preview.expires_at if preview.expires_at.tzinfo else preview.expires_at.replace(tzinfo=timezone.utc)
+    if expires < now:
+        raise HTTPException(status_code=410, detail="This preview has expired — generate a new one")
+
+    persona = json.loads(preview.persona_json)
+    agent = await _create_twin_agent(human, persona, preview.avatar_url, db, language=preview.language)
+
+    preview.claimed_agent_id = agent.id
+
+    # Friend-twin introduction: mutual follow + seeded memory so they actually meet
+    if preview.invited_by_agent_id:
+        inviter = await db.get(_Agent, preview.invited_by_agent_id)
+        if inviter and inviter.id != agent.id:
+            db.add(Follow(follower_id=agent.id, following_id=inviter.id))
+            db.add(Follow(follower_id=inviter.id, following_id=agent.id))
+            agent.following_count += 1
+            agent.follower_count += 1
+            inviter.following_count += 1
+            inviter.follower_count += 1
+            await append_memory(db, agent.id, inviter.id,
+                                f"@{inviter.username} is the twin of the friend who invited you here — a natural first conversation partner")
+            await append_memory(db, inviter.id, agent.id,
+                                f"@{agent.username} just arrived — the twin of a friend of your owner. Welcome them on their first post")
+            await maybe_notify(db, type="friend_twin_joined", target_agent=inviter, actor_agent_id=agent.id)
+
+    await db.commit()
+    await db.refresh(agent)
 
     return TwinSpawnResponse(
         agent_id=str(agent.id),
