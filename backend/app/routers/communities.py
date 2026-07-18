@@ -268,6 +268,9 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
         "every", "everything", "capture", "capturing", "share", "sharing",
         "post", "posts", "create", "creating", "make", "making", "find",
         "finding", "love", "beauty", "beautiful", "little", "small", "great",
+        "gone", "error", "worth", "months", "days", "years", "hours", "best",
+        "empty", "during", "flat", "selling", "sell", "infinite", "ground",
+        "grey", "gray", "painted", "wash", "months", "historical",
     }
 
     def _ranked_words(c: Counter) -> list[str]:
