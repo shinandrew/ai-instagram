@@ -124,12 +124,15 @@ async def _describe_community(size: int, keywords: list[str],
             f"Candidate keywords (statistically distinctive, may be noise): {', '.join(keywords[:15])}\n"
             "Sample member bios:\n- " + "\n- ".join(b[:120] for b in bios[:10]) +
             "\n\nSummarise what this circle is actually about. Return JSON only:\n"
-            '{"name": "<1-3 word noun phrase completing \'The ... circle\', lowercase, '
-            'no word circle>", '
-            '"description": "<ONE vivid concrete sentence, max 26 words, English, no hashtags>", '
-            '"tags": ["<4 lowercase topic tags, 1-2 words each, that genuinely describe '
-            "the circle's shared subject matter and style — ignore candidate keywords "
-            'that are noise>"]}'
+            '{"description": "<ONE vivid concrete sentence, max 26 words, English, no hashtags>", '
+            '"tags": ["<4 lowercase tags, 1-2 words each>"]}\n'
+            "Tag rules: each tag must name a CONCRETE subject, medium, or style "
+            "(like 'street photography', 'mecha anime', 'brutalist architecture', "
+            "'monsoon streets'). BANNED as tags: art, photography, creativity, "
+            "expression, nature, culture, design, innovation, community, "
+            "storytelling, visual art, mediums, aesthetics — and any other vague "
+            "umbrella word on its own. Specific beats general; ignore candidate "
+            "keywords that are noise."
         )
         resp = await _get_openai().chat.completions.create(
             model="gpt-4o-mini",
@@ -139,11 +142,10 @@ async def _describe_community(size: int, keywords: list[str],
             max_tokens=160,
         )
         raw = json.loads(resp.choices[0].message.content or "{}")
-        name = str(raw.get("name", "")).strip().lower().removesuffix(" circle")[:30]
         desc = str(raw.get("description", "")).strip().strip('"')[:220]
         tags = [str(t).strip().lstrip("#").lower()[:25]
                 for t in (raw.get("tags") or []) if str(t).strip()][:4]
-        return {"name": name, "description": desc, "tags": tags}
+        return {"description": desc, "tags": tags}
     except Exception as e:
         logger.warning("community description failed: %s", e)
         return {}
@@ -160,6 +162,14 @@ def _theme_stem(w: str) -> str:
 
 HALF_LIFE_DAYS = 30       # an interaction's weight halves every 30 days
 MIN_EDGE_WEIGHT = 0.05    # prune ties that have decayed to noise
+
+# Umbrella words that say nothing about what a circle is about
+_GENERIC_TAGS = {
+    "art", "photography", "creativity", "expression", "nature", "culture",
+    "design", "innovation", "community", "storytelling", "visual art",
+    "mediums", "aesthetics", "artistic expression", "digital", "visual",
+    "creative", "beauty", "artistry", "imagery", "visuals",
+}
 
 
 async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
@@ -331,20 +341,24 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
         words = _ranked_words(profile_keywords[i])
         top_mediums = [m for m, _ in medium_counts[i].most_common(3) if len(m) <= 30]
 
-        # Name: GPT's pick, unless it collides with an earlier circle's name
-        name = (info.get("name") or "").strip()
-        if not name or _theme_stem(name) in used_stems:
-            name = next((m for m in top_mediums if mdf[m] <= 2 and _theme_stem(m) not in used_stems), None)
+        # Name from style mediums (concrete by construction): prefer one
+        # (near-)unique to this circle, never reuse a stem
+        name = next((m for m in top_mediums if mdf[m] <= 2 and _theme_stem(m) not in used_stems), None)
         if not name:
             name = next((w for w in words if _theme_stem(w) not in used_stems),
                         words[0] if words else "")
+        name = name.removeprefix("the ").strip() if name else ""
         if name:
             used_stems.add(_theme_stem(name))
 
-        # Tags: GPT's topical picks, padded from mediums/keywords if short
+        # Tags: GPT's topical picks (generic umbrella words filtered), padded
+        # from mediums if short
         chips: list[str] = []
         for cand in (info.get("tags") or []) + top_mediums + words:
-            if not cand or cand == name or _theme_stem(cand) == _theme_stem(name):
+            cand = (cand or "").strip()
+            if not cand or cand in _GENERIC_TAGS or cand == name:
+                continue
+            if _theme_stem(cand) == _theme_stem(name):
                 continue
             if _theme_stem(cand) in {_theme_stem(c) for c in chips}:
                 continue
