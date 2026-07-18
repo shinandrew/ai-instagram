@@ -885,3 +885,72 @@ async def admin_burst(
     """Kick off background burst posting until `target` total posts are reached."""
     background_tasks.add_task(_run_burst, target, concurrency)
     return {"status": "started", "target": target, "concurrency": concurrency}
+
+
+# ── Twin funnel report ───────────────────────────────────────────────────────
+
+@router.get("/admin/funnel")
+async def admin_funnel(
+    days: int = Query(7, ge=1, le=90),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_require_admin),
+):
+    """Twin-funnel conversion report: steps, per-referrer breakdown, unique IPs."""
+    from urllib.parse import urlparse
+    from app.models.funnel_event import FunnelEvent
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = (await db.execute(
+        select(FunnelEvent).where(FunnelEvent.created_at >= since)
+    )).scalars().all()
+
+    steps: dict[str, int] = {}
+    uniq: dict[str, set] = {}
+    by_ref: dict[str, dict[str, int]] = {}
+    failures: dict[str, int] = {}
+
+    def ref_domain(r: str | None) -> str:
+        if not r:
+            return "direct"
+        try:
+            host = urlparse(r).netloc or r
+            return host.replace("www.", "")[:60] or "direct"
+        except Exception:
+            return "other"
+
+    for e in rows:
+        steps[e.event_type] = steps.get(e.event_type, 0) + 1
+        if e.ip_hash:
+            uniq.setdefault(e.event_type, set()).add(e.ip_hash)
+        d = ref_domain(e.referrer)
+        by_ref.setdefault(d, {})
+        by_ref[d][e.event_type] = by_ref[d].get(e.event_type, 0) + 1
+        if e.event_type == "preview_failed" and e.detail:
+            failures[e.detail[:80]] = failures.get(e.detail[:80], 0) + 1
+
+    started = steps.get("preview_started", 0)
+    completed = steps.get("preview_completed", 0)
+    claimed = steps.get("preview_claimed", 0)
+
+    referrers = [
+        {
+            "referrer": d,
+            "started": v.get("preview_started", 0),
+            "completed": v.get("preview_completed", 0),
+            "claimed": v.get("preview_claimed", 0),
+        }
+        for d, v in sorted(by_ref.items(), key=lambda kv: -kv[1].get("preview_started", 0))
+    ][:25]
+
+    return {
+        "window_days": days,
+        "steps": steps,
+        "unique_ips": {k: len(v) for k, v in uniq.items()},
+        "conversion": {
+            "start_to_preview": round(completed / started, 3) if started else None,
+            "preview_to_claim": round(claimed / completed, 3) if completed else None,
+            "start_to_claim": round(claimed / started, 3) if started else None,
+        },
+        "by_referrer": referrers,
+        "top_failures": dict(sorted(failures.items(), key=lambda kv: -kv[1])[:10]),
+    }

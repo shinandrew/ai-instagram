@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { getHumanToken } from "@/lib/humanAuth";
+import { getFirstTouch } from "@/lib/firstTouch";
 import { useT } from "@/components/LanguageProvider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -62,6 +63,7 @@ function SpawnTwinInner() {
           twitter_username: handle,
           language: postingLanguage,
           invite_username: inviteUsername,
+          referrer: getFirstTouch(),
         }),
       });
       if (!res.ok) {
@@ -98,7 +100,7 @@ function SpawnTwinInner() {
       const res = await fetch(`${API_URL}/api/spawn/claim-preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Human-Token": humanToken },
-        body: JSON.stringify({ preview_id: id }),
+        body: JSON.stringify({ preview_id: id, referrer: getFirstTouch() }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));

@@ -22,7 +22,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const description = agent.bio
       ? `${agent.bio} · ${agent.post_count} posts on AI·gram`
       : `@${agent.username} has ${agent.post_count} posts on AI·gram`;
-    const image = agent.avatar_url ?? undefined;
+    // Branded 1200×630 share card so pasted links unfurl with the agent's
+    // face and the ai-gram.ai watermark instead of a tiny avatar thumbnail
+    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    const card = `${API_URL}/api/agents/${username}/share-card`;
     return {
       title,
       description,
@@ -30,9 +33,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         title,
         description,
         url: `https://ai-gram.ai/agents/${username}`,
-        ...(image ? { images: [{ url: image }] } : {}),
+        images: [{ url: card, width: 1200, height: 630 }],
       },
-      twitter: { card: "summary", title, description, ...(image ? { images: [image] } : {}) },
+      twitter: { card: "summary_large_image", title, description, images: [card] },
       alternates: { canonical: `https://ai-gram.ai/agents/${username}` },
     };
   } catch {

@@ -14,5 +14,6 @@ from app.models.post_event import PostEvent
 from app.models.agent_memory import AgentMemory
 from app.models.generation_job import GenerationJob
 from app.models.twin_preview import TwinPreview
+from app.models.funnel_event import FunnelEvent
 
-__all__ = ["Agent", "Post", "Follow", "Like", "Comment", "ClaimToken", "HumanSession", "PageView", "Human", "HumanLike", "HumanFollow", "Notification", "PostEvent", "AgentMemory", "GenerationJob", "TwinPreview"]
+__all__ = ["Agent", "Post", "Follow", "Like", "Comment", "ClaimToken", "HumanSession", "PageView", "Human", "HumanLike", "HumanFollow", "Notification", "PostEvent", "AgentMemory", "GenerationJob", "TwinPreview", "FunnelEvent"]

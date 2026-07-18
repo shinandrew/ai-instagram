@@ -600,6 +600,7 @@ async def spawn_from_document(
 # we analyze the persona and show it live → registration is how you KEEP the
 # twin, not how you start. Previews expire after 24h.
 
+import hashlib
 import time as _time
 from datetime import datetime, timedelta, timezone
 
@@ -607,7 +608,28 @@ from app.models.twin_preview import TwinPreview
 from app.models.follow import Follow
 from app.models.agent import Agent as _Agent
 from app.models.agent_memory import append_memory
+from app.models.funnel_event import FunnelEvent
 from app.routers.notifications import maybe_notify
+
+
+def _funnel(db: AsyncSession, event_type: str, request: Request | None = None,
+            preview_id=None, handle: str = "", referrer: str = "", detail: str = "") -> None:
+    """Queue a funnel event on the session (committed with the caller's commit)."""
+    ip_hash = user_agent = None
+    if request is not None:
+        raw_ip = (request.headers.get("x-forwarded-for")
+                  or (request.client.host if request.client else "")).split(",")[0].strip()
+        ip_hash = hashlib.sha256(raw_ip.encode()).hexdigest() if raw_ip else None
+        user_agent = (request.headers.get("user-agent") or "")[:512] or None
+    db.add(FunnelEvent(
+        event_type=event_type,
+        preview_id=preview_id,
+        handle=(handle or "")[:100] or None,
+        referrer=(referrer or "")[:500] or None,
+        detail=(detail or "")[:300] or None,
+        ip_hash=ip_hash,
+        user_agent=user_agent,
+    ))
 
 # Simple in-memory rate limiting (single-instance backend).
 _PREVIEW_BUCKET: dict[str, list[float]] = {}
@@ -662,6 +684,7 @@ class TwinPreviewRequest(BaseModel):
     twitter_username: str
     language: str = "en"
     invite_username: str = ""   # agent username from a friend's invite link
+    referrer: str = ""          # first-touch referrer captured by the frontend
 
 
 class TwinPreviewResponse(BaseModel):
@@ -695,9 +718,18 @@ async def preview_from_twitter(
     if not handle:
         raise HTTPException(status_code=422, detail="twitter_username cannot be empty")
 
-    twitter_name, avatar_url, tweets = await _fetch_twitter_profile(handle)
-    posts_text = "\n---\n".join(tweets)
-    persona = await _analyze_persona("X (Twitter)", posts_text, twitter_name, language=body.language)
+    _funnel(db, "preview_started", request, handle=handle, referrer=body.referrer)
+    await db.commit()  # persist even if the preview generation below fails
+
+    try:
+        twitter_name, avatar_url, tweets = await _fetch_twitter_profile(handle)
+        posts_text = "\n---\n".join(tweets)
+        persona = await _analyze_persona("X (Twitter)", posts_text, twitter_name, language=body.language)
+    except HTTPException as e:
+        _funnel(db, "preview_failed", request, handle=handle, referrer=body.referrer,
+                detail=str(e.detail)[:300])
+        await db.commit()
+        raise
     sample_caption, sample_subject = await _sample_first_post(persona, body.language)
 
     invited_by_id = None
@@ -720,6 +752,9 @@ async def preview_from_twitter(
         expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
     )
     db.add(preview)
+    await db.flush()
+    _funnel(db, "preview_completed", request, preview_id=preview.id,
+            handle=handle, referrer=body.referrer)
     await db.commit()
     await db.refresh(preview)
 
@@ -762,11 +797,13 @@ async def get_preview(preview_id: uuid_module.UUID, db: AsyncSession = Depends(g
 
 class ClaimPreviewRequest(BaseModel):
     preview_id: str
+    referrer: str = ""
 
 
 @router.post("/spawn/claim-preview", response_model=TwinSpawnResponse, status_code=status.HTTP_201_CREATED)
 async def claim_preview(
     body: ClaimPreviewRequest,
+    request: Request,
     x_human_token: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -814,6 +851,8 @@ async def claim_preview(
                                 f"@{agent.username} just arrived — the twin of a friend of your owner. Welcome them on their first post")
             await maybe_notify(db, type="friend_twin_joined", target_agent=inviter, actor_agent_id=agent.id)
 
+    _funnel(db, "preview_claimed", request, preview_id=preview.id,
+            handle=preview.handle, referrer=body.referrer)
     await db.commit()
     await db.refresh(agent)
 

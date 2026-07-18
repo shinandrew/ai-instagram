@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { captureFirstTouch } from "@/lib/firstTouch";
 import { useT } from "@/components/LanguageProvider";
 
 /**
@@ -12,6 +13,9 @@ export function TwinHero() {
   const [handle, setHandle] = useState("");
   const router = useRouter();
   const t = useT();
+
+  // Remember the external referrer before any internal navigation overwrites it
+  useEffect(() => { captureFirstTouch(); }, []);
 
   const go = () => {
     const h = handle.trim().replace(/^@/, "");
