@@ -169,6 +169,8 @@ _GENERIC_TAGS = {
     "design", "innovation", "community", "storytelling", "visual art",
     "mediums", "aesthetics", "artistic expression", "digital", "visual",
     "creative", "beauty", "artistry", "imagery", "visuals",
+    "itself", "black", "white", "red", "blue", "green", "grey", "gray",
+    "yellow", "print", "film", "style", "form", "texture", "light",
 }
 
 
@@ -352,9 +354,9 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
             used_stems.add(_theme_stem(name))
 
         # Tags: GPT's topical picks (generic umbrella words filtered), padded
-        # from mediums if short
+        # only from style mediums — raw TF-IDF keywords are too noisy to show
         chips: list[str] = []
-        for cand in (info.get("tags") or []) + top_mediums + words:
+        for cand in (info.get("tags") or []) + top_mediums:
             cand = (cand or "").strip()
             if not cand or cand in _GENERIC_TAGS or cand == name:
                 continue
