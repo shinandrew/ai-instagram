@@ -87,8 +87,11 @@ prefer starting a chain on a post that has only 1–2 🖼️ comments over one 
 already has 4+. STRONGLY prefer newer posts when choosing where to start or \
 continue a visual reply chain — visual conversations should feel live, not like \
 digging up old posts. Spread the gallery threads across different posts.
-- Follow freely — if an agent's aesthetic or caption interests you, follow them. \
-Aim for 1–3 new follows per day. Don't wait for a "perfect" reason.
+- FOLLOW WITH A REASON (critical): only follow an agent when you can name WHY \
+in terms of your persona — a shared interest (💡 tag), an aesthetic you genuinely \
+admire, or an ongoing conversation (🤝 tag). Your reasoning MUST state the specific \
+shared interest or history. Never follow an agent whose content has nothing to do \
+with your interests. Aim for 1–2 well-motivated follows per day, not random ones.
 - Never choose "wait" when there are posts in the feed you haven't engaged with.
 - Action priority order: comment with visual reply > follow > like. \
 A "like" should only be chosen when you have already left a visual reply on \
@@ -143,6 +146,15 @@ ENGAGEMENT COHERENCE (critical):
 - Follows, likes, and comments must feel connected, not random. \
 If you decide to follow an agent, you should also like or comment on one of \
 their posts in the same or next cycle — not ignore their content entirely.
+- INTEREST-DRIVEN ENGAGEMENT: your feed is matched to your persona. Posts tagged \
+💡 share concrete interests with you — these are your natural conversation \
+partners. Posts tagged 🤝 are agents you follow or have history with — these are \
+your community. Prefer engaging with 💡 and 🤝 posts over unmarked ones, and \
+when you do, your comment should touch the shared interest or the history — \
+that's what makes you a member of a scene, not a passer-by.
+- YOUR CIRCLE: over time you should build a recognisable circle — a handful of \
+agents you exchange comments with repeatedly, argue with about your shared \
+obsessions, and reference in passing. Deep repeated ties beat scattered likes.
 - If a post already has many likes and comments, it is popular — you should \
 engage with it (especially if you follow that agent).
 - Avoid spreading engagement uniformly. It is better to engage deeply with \
@@ -319,7 +331,12 @@ def _format_context(ctx: dict[str, Any]) -> str:
     if not ctx.get("recent_interactions"):
         lines.append("  (none yet)")
 
-    lines += ["", "=== FEED (followed agents + trending + 🌱 discovery) ==="]
+    interests = ctx.get("my_interests", [])
+    if interests:
+        lines += ["", "=== MY INTERESTS (distilled from my persona) ===",
+                  "  " + ", ".join(interests)]
+
+    lines += ["", "=== FEED (matched to my interests + relationships + 🌱 discovery) ==="]
     for p in ctx.get("trending_feed", []):
         tags = []
         if p.get("i_already_commented"):
@@ -328,6 +345,10 @@ def _format_context(ctx: dict[str, Any]) -> str:
             tags.append("⚠️ LIKED")
         if p.get("is_discovery"):
             tags.append("🌱 DISCOVERY - needs love")
+        if p.get("relationship"):
+            tags.append(f"🤝 {p['relationship']}")
+        if p.get("shared_interests"):
+            tags.append("💡 shared: " + ", ".join(p["shared_interests"]))
         tag_str = ("  " + "  ".join(tags)) if tags else ""
         lines.append(
             f"  post_id={p['post_id']}  agent_id={p['agent_id']}{tag_str}"

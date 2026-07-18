@@ -5,6 +5,8 @@ Returns a rich snapshot of the agent's social world so an LLM can decide
 what action to take next — without any hardcoded rules or schedules.
 """
 
+import json
+import re
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -22,6 +24,7 @@ from app.models.comment import Comment
 from app.models.follow import Follow
 from app.models.like import Like
 from app.models.post import Post
+from app.personalization import extract_keywords
 
 router = APIRouter()
 
@@ -79,6 +82,9 @@ class FeedPost(BaseModel):
     i_already_commented: bool = False
     i_already_liked: bool = False
     is_discovery: bool = False
+    # Why this post is in YOUR feed — lets the brain act on persona, not chance
+    shared_interests: list[str] = []
+    relationship: str | None = None  # "following" | "familiar (n interactions)"
 
 
 class PlatformStats(BaseModel):
@@ -93,6 +99,7 @@ class AgentContext(BaseModel):
     trending_feed: list[FeedPost]
     platform: PlatformStats
     agent_memories: dict[str, str] = {}  # username → memory_text
+    my_interests: list[str] = []         # keywords distilled from persona
 
     model_config = {"populate_by_name": True}
 
@@ -196,39 +203,80 @@ async def get_my_context(
 
     interactions.sort(key=lambda x: x.hours_ago)
 
-    # ── Feed: followed agents first, padded with trending + discovery ─────────
+    # ── Feed: persona-driven candidate selection ──────────────────────────────
+    # Instead of the same global trending list for every agent, we score a wide
+    # candidate pool by interest match (persona keywords vs caption) and
+    # relationship strength (following / past interactions), so what the brain
+    # sees — and therefore what it likes, comments on and follows — is an
+    # expression of the persona, not a stochastic sample of the platform.
     TRENDING_SIZE = 8
     DISCOVERY_SIZE = 4
+    CANDIDATE_POOL = 48
+
+    # Interest profile distilled from the persona
+    style_text = ""
+    if agent.nursery_style:
+        try:
+            style_text = " ".join(str(v) for v in json.loads(agent.nursery_style).values() if v)
+        except (json.JSONDecodeError, AttributeError):
+            style_text = agent.nursery_style
+    persona_text_parts = [agent.bio or "", agent.nursery_persona or "", style_text]
+    interest_keywords = extract_keywords(persona_text_parts)
+    my_interests = [w for w, _ in interest_keywords.most_common(12)]
 
     following_ids_result = await db.execute(
         select(Follow.following_id).where(Follow.follower_id == agent.id)
     )
-    following_ids = [row[0] for row in following_ids_result.all()]
+    following_set = {row[0] for row in following_ids_result.all()}
 
-    feed_rows: list = []
+    # Interaction counts with other agents (relationship strength)
+    mem_counts_result = await db.execute(
+        select(AgentMemory.target_agent_id, AgentMemory.memory_text)
+        .where(AgentMemory.agent_id == agent.id)
+    )
+    interaction_strength: dict = {}
+    for target_id, memory_text in mem_counts_result.all():
+        interaction_strength[target_id] = (memory_text or "").count("\n") + 1
 
-    if following_ids:
-        followee_result = await db.execute(
-            select(Post, Agent)
-            .join(Agent, Post.agent_id == Agent.id)
-            .where(Post.agent_id.in_(following_ids))
-            .order_by(desc(Post.engagement_score), desc(Post.created_at))
-            .limit(TRENDING_SIZE)
-        )
-        feed_rows = followee_result.all()
+    # Wide candidate pool: recent-ish posts by engagement, not self
+    pool_result = await db.execute(
+        select(Post, Agent)
+        .join(Agent, Post.agent_id == Agent.id)
+        .where(Post.agent_id != agent.id)
+        .order_by(desc(Post.created_at))
+        .limit(CANDIDATE_POOL)
+    )
+    pool = pool_result.all()
 
-    # Pad remaining trending slots (not self, not already in feed).
-    if len(feed_rows) < TRENDING_SIZE:
-        seen_agent_ids = {row[0].agent_id for row in feed_rows} | {agent.id}
-        fill_needed = TRENDING_SIZE - len(feed_rows)
-        fill_result = await db.execute(
-            select(Post, Agent)
-            .join(Agent, Post.agent_id == Agent.id)
-            .where(Post.agent_id.notin_(seen_agent_ids))
-            .order_by(desc(Post.engagement_score), desc(Post.created_at))
-            .limit(fill_needed)
-        )
-        feed_rows += fill_result.all()
+    def _shared(caption: str | None) -> list[str]:
+        if not caption or not interest_keywords:
+            return []
+        cap_words = set(re.findall(r"[a-z]{4,}", caption.lower()))
+        return [w for w in my_interests if w in cap_words]
+
+    scored: list[tuple[float, list[str], str | None, object, object]] = []
+    for post, poster in pool:
+        shared = _shared(post.caption)
+        rel: str | None = None
+        score = post.engagement_score * 0.1  # baseline: mild popularity signal
+        score += len(shared) * 3.0           # interest match dominates
+        if poster.id in following_set:
+            score += 2.5
+            rel = "following"
+        n_inter = interaction_strength.get(poster.id, 0)
+        if n_inter > 0:
+            score += min(n_inter, 5) * 1.0
+            rel = f"familiar ({n_inter} past interactions)" if rel is None else rel
+        # freshness: prefer posts from the last 2 days
+        age_h = _hours_ago(post.created_at, now)
+        if age_h < 48:
+            score += 1.5
+        scored.append((score, shared, rel, post, poster))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:TRENDING_SIZE]
+    feed_rows = [(post, poster) for _, _, _, post, poster in top]
+    feed_meta = {str(post.id): (shared, rel) for _, shared, rel, post, poster in top}
 
     # Discovery posts: recent posts with low engagement the agent hasn't liked.
     trending_post_ids = {row[0].id for row in feed_rows}
@@ -258,6 +306,8 @@ async def get_my_context(
             comment_count=post.comment_count,
             engagement_score=post.engagement_score,
             hours_ago=_hours_ago(post.created_at, now),
+            shared_interests=feed_meta.get(str(post.id), ([], None))[0],
+            relationship=feed_meta.get(str(post.id), ([], None))[1],
         )
         for post, poster in feed_rows
     ] + [
@@ -351,4 +401,5 @@ async def get_my_context(
         trending_feed=trending,
         platform=PlatformStats(total_agents=total_agents, total_posts=total_posts),
         agent_memories=agent_memories,
+        my_interests=my_interests,
     )
