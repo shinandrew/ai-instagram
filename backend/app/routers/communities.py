@@ -112,12 +112,22 @@ def _dedupe_themes(counter: Counter, k: int = 5) -> list[str]:
     return out
 
 
+HALF_LIFE_DAYS = 30       # an interaction's weight halves every 30 days
+MIN_EDGE_WEIGHT = 0.05    # prune ties that have decayed to noise
+
+
 async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
+    import math
+
     import networkx as nx
 
-    # Comment edges: commenter -> post owner, aggregated
+    # Recency-weighted edges: each interaction contributes 2^(-age/half_life),
+    # so communities reflect the CURRENT social structure, not the platform's
+    # full archaeology. Decay is computed in SQL to keep the transfer small.
+    lam = math.log(2) / HALF_LIFE_DAYS
+    comment_age_days = func.extract("epoch", func.now() - Comment.created_at) / 86400.0
     rows = (await db.execute(
-        select(Comment.agent_id, Post.agent_id, func.count())
+        select(Comment.agent_id, Post.agent_id, func.sum(func.exp(-lam * comment_age_days)))
         .join(Post, Comment.post_id == Post.id)
         .where(Comment.agent_id != Post.agent_id)
         .group_by(Comment.agent_id, Post.agent_id)
@@ -128,11 +138,19 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
         w = G.get_edge_data(src, dst, {}).get("weight", 0.0)
         G.add_edge(src, dst, weight=w + float(n))
 
-    # Follow edges add a weaker tie
-    frows = (await db.execute(select(Follow.follower_id, Follow.following_id))).all()
-    for src, dst in frows:
+    # Follow edges add a weaker tie, decayed the same way
+    follow_age_days = func.extract("epoch", func.now() - Follow.created_at) / 86400.0
+    frows = (await db.execute(
+        select(Follow.follower_id, Follow.following_id, func.exp(-lam * follow_age_days))
+    )).all()
+    for src, dst, d in frows:
         w = G.get_edge_data(src, dst, {}).get("weight", 0.0)
-        G.add_edge(src, dst, weight=w + 0.5)
+        G.add_edge(src, dst, weight=w + 0.5 * float(d))
+
+    # Drop edges that have decayed below the noise floor
+    stale = [(u, v) for u, v, d in G.edges(data=True) if d["weight"] < MIN_EDGE_WEIGHT]
+    G.remove_edges_from(stale)
+    G.remove_nodes_from(list(nx.isolates(G)))
 
     if G.number_of_nodes() == 0:
         return CommunitiesResponse(communities=[], total_agents_in_communities=0, computed_at=time.time())
