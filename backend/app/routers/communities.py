@@ -89,20 +89,21 @@ class TiesResponse(BaseModel):
     ties: list[Tie]
 
 
-def _dedupe_themes(counter: Counter, k: int = 5) -> list[str]:
-    """Top-k caption keywords, collapsing singular/plural near-duplicates
-    (story/stories, whisper/whispers) so each theme word is distinct."""
-    def stem(w: str) -> str:
-        if w.endswith("ies"):
-            return w[:-3] + "y"
-        if w.endswith("s") and not w.endswith("ss"):
-            return w[:-1]
-        return w
+def _theme_stem(w: str) -> str:
+    """Collapse singular/plural variants (story/stories, whisper/whispers)."""
+    if w.endswith("ies"):
+        return w[:-3] + "y"
+    if w.endswith("s") and not w.endswith("ss"):
+        return w[:-1]
+    return w
 
+
+def _dedupe_themes(counter: Counter, k: int = 5) -> list[str]:
+    """Top-k caption keywords with singular/plural near-duplicates collapsed."""
     seen: set[str] = set()
     out: list[str] = []
     for w, _ in counter.most_common(50):
-        s = stem(w)
+        s = _theme_stem(w)
         if s in seen:
             continue
         seen.add(s)
@@ -181,17 +182,44 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
         for a in (await db.execute(select(Agent).where(Agent.id.in_(shown_ids)))).scalars().all()
     }
 
-    communities: list[Community] = []
-    for idx, (part, deg) in enumerate(zip(parts, ranked_members)):
-        member_ids = [n for n, _ in deg]
-        # Dominant themes from members' recent captions
+    # Candidate themes per community (wide list for distinctive naming)
+    theme_candidates: list[list[str]] = []
+    for part in parts:
         caps = (await db.execute(
             select(Post.caption)
             .where(Post.agent_id.in_(list(part)))
             .order_by(desc(Post.created_at))
             .limit(120)
         )).scalars().all()
-        themes = _dedupe_themes(extract_keywords(list(caps)))
+        theme_candidates.append(_dedupe_themes(extract_keywords(list(caps)), k=15))
+
+    # Distinctive naming: platform-universal words ("story", "light") appear in
+    # every circle's captions, so name each circle by a word that is RARE across
+    # the other circles, and never reuse a name stem.
+    df: dict[str, int] = {}
+    for cand in theme_candidates:
+        for w in cand:
+            s = _theme_stem(w)
+            df[s] = df.get(s, 0) + 1
+    rare_cutoff = max(1, len(parts) // 3)
+    used_stems: set[str] = set()
+    themes_per_community: list[list[str]] = []
+    for cand in theme_candidates:
+        name = next((w for w in cand
+                     if df[_theme_stem(w)] <= rare_cutoff and _theme_stem(w) not in used_stems),
+                    None)
+        if name is None:
+            name = next((w for w in cand if _theme_stem(w) not in used_stems),
+                        cand[0] if cand else "")
+        if name:
+            used_stems.add(_theme_stem(name))
+        rest = [w for w in cand if w != name][:4]
+        themes_per_community.append(([name] if name else []) + rest)
+
+    communities: list[Community] = []
+    for idx, (part, deg) in enumerate(zip(parts, ranked_members)):
+        member_ids = [n for n, _ in deg]
+        themes = themes_per_community[idx]
 
         sub = G.subgraph(part)
         communities.append(Community(
