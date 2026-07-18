@@ -9,15 +9,23 @@ Communities are detected with Louvain over the agent-interaction graph
 the research pipeline measures — surfaced for human observers.
 """
 
+import asyncio
+import hashlib
+import json
+import logging
+import math
 import time
 import uuid
 from collections import Counter, defaultdict
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models.agent import Agent
 from app.models.comment import Comment
@@ -25,10 +33,23 @@ from app.models.follow import Follow
 from app.models.post import Post
 from app.personalization import extract_keywords
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _CACHE: dict = {"at": 0.0, "data": None, "ranked": {}}
 _CACHE_TTL = 1800  # 30 min
+# Descriptions keyed by member fingerprint — regenerated only when a
+# community's membership actually changes, not on every cache refresh.
+_DESC_CACHE: dict[str, str] = {}
+
+_openai: Optional[AsyncOpenAI] = None
+
+
+def _get_openai() -> AsyncOpenAI:
+    global _openai
+    if _openai is None:
+        _openai = AsyncOpenAI(api_key=settings.openai_api_key)
+    return _openai
 
 
 class CommunityMember(BaseModel):
@@ -42,7 +63,8 @@ class CommunityMember(BaseModel):
 class Community(BaseModel):
     community_id: int
     size: int
-    themes: list[str]          # dominant caption keywords
+    themes: list[str]          # distinctive persona keywords / mediums
+    description: str | None = None  # natural-language "what this circle is about"
     members: list[CommunityMember]  # top members by internal tie strength
     internal_edges: int
 
@@ -69,6 +91,7 @@ class CommunityDetail(BaseModel):
     community_id: int
     size: int
     themes: list[str]
+    description: str | None = None
     members: list[CommunityMember]   # up to 60, by tie strength
     total_members: int
     trending_posts: list[CommunityPost]
@@ -89,6 +112,33 @@ class TiesResponse(BaseModel):
     ties: list[Tie]
 
 
+async def _describe_community(size: int, themes: list[str],
+                              mediums: list[str], bios: list[str]) -> str:
+    """One-sentence plain-English description of what a circle is about."""
+    try:
+        prompt = (
+            f"An emergent community of {size} AI agents formed on an AI-only social "
+            "network, detected purely from who comments on whom. Their profile data:\n"
+            f"Common art mediums: {', '.join(mediums) or '(varied)'}\n"
+            f"Distinctive keywords: {', '.join(themes)}\n"
+            "Sample member bios:\n- " + "\n- ".join(b[:120] for b in bios[:8]) +
+            "\n\nWrite ONE sentence (max 26 words, English, no hashtags, no quotes) "
+            "describing what this circle is about — concrete and vivid, like a scene "
+            "report, e.g. 'Street photographers and neon-city documentarians trading "
+            "night shots and arguing about grain.'"
+        )
+        resp = await _get_openai().chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=70,
+        )
+        return (resp.choices[0].message.content or "").strip().strip('"')[:220]
+    except Exception as e:
+        logger.warning("community description failed: %s", e)
+        return ""
+
+
 def _theme_stem(w: str) -> str:
     """Collapse singular/plural variants (story/stories, whisper/whispers)."""
     if w.endswith("ies"):
@@ -96,21 +146,6 @@ def _theme_stem(w: str) -> str:
     if w.endswith("s") and not w.endswith("ss"):
         return w[:-1]
     return w
-
-
-def _dedupe_themes(counter: Counter, k: int = 5) -> list[str]:
-    """Top-k caption keywords with singular/plural near-duplicates collapsed."""
-    seen: set[str] = set()
-    out: list[str] = []
-    for w, _ in counter.most_common(50):
-        s = _theme_stem(w)
-        if s in seen:
-            continue
-        seen.add(s)
-        out.append(w)
-        if len(out) == k:
-            break
-    return out
 
 
 HALF_LIFE_DAYS = 30       # an interaction's weight halves every 30 days
@@ -182,39 +217,105 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
         for a in (await db.execute(select(Agent).where(Agent.id.in_(shown_ids)))).scalars().all()
     }
 
-    # Candidate themes per community (wide list for distinctive naming)
-    theme_candidates: list[list[str]] = []
+    # Themes come from member PERSONAS (bios + style mediums/moods), not
+    # captions: every agent writes LLM-poetic captions ("story", "whispers"),
+    # so caption vocabulary cannot distinguish circles — persona text can.
+    profile_keywords: list[Counter] = []
+    medium_counts: list[Counter] = []
+    sample_bios: list[list[str]] = []
     for part in parts:
-        caps = (await db.execute(
-            select(Post.caption)
-            .where(Post.agent_id.in_(list(part)))
-            .order_by(desc(Post.created_at))
-            .limit(120)
-        )).scalars().all()
-        theme_candidates.append(_dedupe_themes(extract_keywords(list(caps)), k=15))
+        prows = (await db.execute(
+            select(Agent.bio, Agent.nursery_style, Agent.display_name)
+            .where(Agent.id.in_(list(part)))
+        )).all()
+        bios: list[str] = []
+        mediums: Counter = Counter()
+        texts: list[str] = []
+        for bio, style, _name in prows:
+            if bio:
+                bios.append(bio)
+                texts.append(bio)
+            if style:
+                try:
+                    st = json.loads(style)
+                    m = (st.get("medium") or "").strip().lower()
+                    if m:
+                        mediums[m] += 1
+                    texts.append(" ".join(str(v) for v in st.values() if v))
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+        profile_keywords.append(extract_keywords(texts))
+        medium_counts.append(mediums)
+        sample_bios.append(bios[:8])
 
-    # Distinctive naming: platform-universal words ("story", "light") appear in
-    # every circle's captions, so name each circle by a word that is RARE across
-    # the other circles, and never reuse a name stem.
-    df: dict[str, int] = {}
-    for cand in theme_candidates:
-        for w in cand:
+    # TF-IDF ranking: down-weight words common across circles.
+    n_comm = len(parts)
+    df: Counter = Counter()
+    for c in profile_keywords:
+        for w, _ in c.most_common(30):
+            df[_theme_stem(w)] += 1
+    mdf: Counter = Counter()
+    for mc in medium_counts:
+        for m, _ in mc.most_common(3):
+            mdf[m] += 1
+
+    def _ranked_words(c: Counter) -> list[str]:
+        scored = sorted(
+            ((cnt * math.log(1.0 + n_comm / df[_theme_stem(w)]), w)
+             for w, cnt in c.most_common(30)),
+            reverse=True,
+        )
+        seen: set[str] = set()
+        out: list[str] = []
+        for _, w in scored:
             s = _theme_stem(w)
-            df[s] = df.get(s, 0) + 1
-    rare_cutoff = max(1, len(parts) // 3)
+            if s in seen:
+                continue
+            seen.add(s)
+            out.append(w)
+        return out
+
     used_stems: set[str] = set()
     themes_per_community: list[list[str]] = []
-    for cand in theme_candidates:
-        name = next((w for w in cand
-                     if df[_theme_stem(w)] <= rare_cutoff and _theme_stem(w) not in used_stems),
-                    None)
+    for i in range(n_comm):
+        words = _ranked_words(profile_keywords[i])
+        top_mediums = [m for m, _ in medium_counts[i].most_common(3) if len(m) <= 30]
+        # Name: prefer a style medium that is (near-)unique to this circle
+        name = next((m for m in top_mediums if mdf[m] <= 2 and _theme_stem(m) not in used_stems), None)
         if name is None:
-            name = next((w for w in cand if _theme_stem(w) not in used_stems),
-                        cand[0] if cand else "")
+            name = next((w for w in words if _theme_stem(w) not in used_stems),
+                        words[0] if words else "")
         if name:
             used_stems.add(_theme_stem(name))
-        rest = [w for w in cand if w != name][:4]
-        themes_per_community.append(([name] if name else []) + rest)
+        chips: list[str] = []
+        for cand in top_mediums + words:
+            if cand == name or _theme_stem(cand) in {_theme_stem(c) for c in chips}:
+                continue
+            if _theme_stem(cand) == _theme_stem(name):
+                continue
+            chips.append(cand)
+            if len(chips) == 4:
+                break
+        themes_per_community.append(([name] if name else []) + chips)
+
+    # Natural-language descriptions (cached by membership fingerprint)
+    fingerprints = [
+        hashlib.md5(",".join(sorted(str(n) for n, _ in ranked_full[i][:12])).encode()).hexdigest()
+        for i in range(n_comm)
+    ]
+    desc_tasks = {}
+    for i in range(n_comm):
+        if fingerprints[i] not in _DESC_CACHE:
+            desc_tasks[i] = _describe_community(
+                len(parts[i]), themes_per_community[i],
+                [m for m, _ in medium_counts[i].most_common(5)], sample_bios[i],
+            )
+    if desc_tasks:
+        results = await asyncio.gather(*desc_tasks.values(), return_exceptions=True)
+        for i, res in zip(desc_tasks.keys(), results):
+            if isinstance(res, str) and res:
+                _DESC_CACHE[fingerprints[i]] = res
+    descriptions = [_DESC_CACHE.get(fp) for fp in fingerprints]
 
     communities: list[Community] = []
     for idx, (part, deg) in enumerate(zip(parts, ranked_members)):
@@ -226,6 +327,7 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
             community_id=idx,
             size=len(part),
             themes=themes,
+            description=descriptions[idx],
             members=[
                 CommunityMember(
                     agent_id=str(n),
@@ -322,6 +424,7 @@ async def get_community_board(community_id: int, db: AsyncSession = Depends(get_
         community_id=community_id,
         size=summary.size,
         themes=summary.themes,
+        description=summary.description,
         members=members,
         total_members=len(member_ids),
         trending_posts=_post_rows_to_models(trending_rows),

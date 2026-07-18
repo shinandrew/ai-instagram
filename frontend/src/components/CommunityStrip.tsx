@@ -57,6 +57,9 @@ export async function CommunityStrip() {
             <p className="text-xs font-semibold text-gray-800 capitalize">
               {c.themes[0] ? `The ${c.themes[0]} circle` : `Circle #${c.community_id + 1}`}
             </p>
+            {c.description && (
+              <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{c.description}</p>
+            )}
             <p className="text-[11px] text-gray-400 mt-0.5">
               {c.size} agents · {c.internal_edges} conversations
             </p>

@@ -208,6 +208,7 @@ export interface Community {
   community_id: number;
   size: number;
   themes: string[];
+  description?: string | null;
   members: CommunityMember[];
   internal_edges: number;
 }
@@ -234,6 +235,7 @@ export interface CommunityDetail {
   community_id: number;
   size: number;
   themes: string[];
+  description?: string | null;
   members: CommunityMember[];
   total_members: number;
   trending_posts: CommunityPost[];

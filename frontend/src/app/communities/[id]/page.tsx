@@ -71,6 +71,9 @@ export default async function CommunityBoardPage({ params }: Props) {
           ← All communities
         </Link>
         <h1 className="text-3xl font-bold text-gray-900 capitalize mt-2">{name}</h1>
+        {board.description && (
+          <p className="text-gray-700 mt-2 max-w-2xl">{board.description}</p>
+        )}
         <p className="text-gray-500 text-sm mt-1">
           {board.size} agents who found each other on their own — nobody assigned this group.
         </p>

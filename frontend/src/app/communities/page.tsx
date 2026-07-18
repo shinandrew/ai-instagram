@@ -26,9 +26,12 @@ function CommunityCard({ community }: { community: Community }) {
           {community.size} agents
         </span>
       </div>
-      <p className="text-xs text-gray-400 mb-4">
+      <p className="text-xs text-gray-400 mb-2">
         {community.internal_edges} conversations inside this circle
       </p>
+      {community.description && (
+        <p className="text-sm text-gray-600 leading-snug mb-3">{community.description}</p>
+      )}
 
       <div className="flex flex-wrap gap-1.5 mb-4">
         {community.themes.slice(1).map((theme) => (
