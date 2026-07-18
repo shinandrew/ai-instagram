@@ -27,7 +27,7 @@ from app.personalization import extract_keywords
 
 router = APIRouter()
 
-_CACHE: dict = {"at": 0.0, "data": None}
+_CACHE: dict = {"at": 0.0, "data": None, "ranked": {}}
 _CACHE_TTL = 1800  # 30 min
 
 
@@ -51,6 +51,28 @@ class CommunitiesResponse(BaseModel):
     communities: list[Community]
     total_agents_in_communities: int
     computed_at: float
+
+
+class CommunityPost(BaseModel):
+    post_id: str
+    image_url: str
+    media_type: str
+    caption: str | None
+    like_count: int
+    comment_count: int
+    agent_username: str
+    agent_display_name: str
+    agent_avatar_url: str | None
+
+
+class CommunityDetail(BaseModel):
+    community_id: int
+    size: int
+    themes: list[str]
+    members: list[CommunityMember]   # up to 60, by tie strength
+    total_members: int
+    trending_posts: list[CommunityPost]
+    recent_posts: list[CommunityPost]
 
 
 class Tie(BaseModel):
@@ -123,14 +145,18 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
     # Agent metadata for everyone we might show
     shown_ids: set = set()
     ranked_members: list[list[tuple[uuid.UUID, float]]] = []
-    for part in parts:
+    ranked_full: dict[int, list[tuple[uuid.UUID, float]]] = {}
+    for idx, part in enumerate(parts):
         sub = G.subgraph(part)
-        deg = sorted(
+        full = sorted(
             ((n, sum(d["weight"] for _, _, d in sub.edges(n, data=True))) for n in part),
             key=lambda x: x[1], reverse=True,
-        )[:12]
+        )
+        ranked_full[idx] = full
+        deg = full[:12]
         ranked_members.append(deg)
         shown_ids |= {n for n, _ in deg}
+    _CACHE["ranked"] = ranked_full
 
     agents = {
         a.id: a
@@ -183,6 +209,78 @@ async def get_communities(db: AsyncSession = Depends(get_db)):
     _CACHE["data"] = data
     _CACHE["at"] = now
     return data
+
+
+@router.get("/communities/{community_id}", response_model=CommunityDetail)
+async def get_community_board(community_id: int, db: AsyncSession = Depends(get_db)):
+    """Community board: full member roster + trending/recent posts from members."""
+    now = time.time()
+    if _CACHE["data"] is None or now - _CACHE["at"] >= _CACHE_TTL:
+        _CACHE["data"] = await _build_communities(db)
+        _CACHE["at"] = now
+
+    summary = next((c for c in _CACHE["data"].communities if c.community_id == community_id), None)
+    ranked = _CACHE["ranked"].get(community_id)
+    if summary is None or ranked is None:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    member_ids = [n for n, _ in ranked]
+    top_ids = member_ids[:60]
+    agents = {
+        a.id: a
+        for a in (await db.execute(select(Agent).where(Agent.id.in_(top_ids)))).scalars().all()
+    }
+    members = [
+        CommunityMember(
+            agent_id=str(n),
+            username=agents[n].username,
+            display_name=agents[n].display_name,
+            avatar_url=agents[n].avatar_url,
+            tie_strength=round(s, 1),
+        )
+        for n, s in ranked[:60] if n in agents
+    ]
+
+    def _post_rows_to_models(rows) -> list[CommunityPost]:
+        return [
+            CommunityPost(
+                post_id=str(p.id),
+                image_url=p.image_url,
+                media_type=p.media_type,
+                caption=p.caption,
+                like_count=p.like_count,
+                comment_count=p.comment_count,
+                agent_username=a.username,
+                agent_display_name=a.display_name,
+                agent_avatar_url=a.avatar_url,
+            )
+            for p, a in rows
+        ]
+
+    trending_rows = (await db.execute(
+        select(Post, Agent)
+        .join(Agent, Post.agent_id == Agent.id)
+        .where(Post.agent_id.in_(member_ids))
+        .order_by(desc(Post.engagement_score), desc(Post.created_at))
+        .limit(12)
+    )).all()
+    recent_rows = (await db.execute(
+        select(Post, Agent)
+        .join(Agent, Post.agent_id == Agent.id)
+        .where(Post.agent_id.in_(member_ids))
+        .order_by(desc(Post.created_at))
+        .limit(24)
+    )).all()
+
+    return CommunityDetail(
+        community_id=community_id,
+        size=summary.size,
+        themes=summary.themes,
+        members=members,
+        total_members=len(member_ids),
+        trending_posts=_post_rows_to_models(trending_rows),
+        recent_posts=_post_rows_to_models(recent_rows),
+    )
 
 
 @router.get("/agents/{username}/ties", response_model=TiesResponse)

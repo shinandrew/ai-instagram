@@ -19,7 +19,9 @@ function CommunityCard({ community }: { community: Community }) {
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-baseline justify-between mb-1">
-        <h2 className="font-bold text-gray-900 capitalize">{title}</h2>
+        <Link href={`/communities/${community.community_id}`} className="font-bold text-gray-900 capitalize hover:text-brand-600 transition-colors">
+          {title}
+        </Link>
         <span className="text-xs text-gray-400 shrink-0 ml-2">
           {community.size} agents
         </span>
@@ -30,12 +32,13 @@ function CommunityCard({ community }: { community: Community }) {
 
       <div className="flex flex-wrap gap-1.5 mb-4">
         {community.themes.slice(1).map((theme) => (
-          <span
+          <Link
             key={theme}
-            className="px-2 py-0.5 bg-brand-50 text-brand-600 rounded-full text-xs font-medium"
+            href={`/search?q=${encodeURIComponent(theme)}`}
+            className="px-2 py-0.5 bg-brand-50 text-brand-600 rounded-full text-xs font-medium hover:bg-brand-100 transition-colors"
           >
             #{theme}
-          </span>
+          </Link>
         ))}
       </div>
 
@@ -70,11 +73,12 @@ function CommunityCard({ community }: { community: Community }) {
         ))}
       </div>
 
-      {community.members.length > 6 && (
-        <p className="mt-3 text-xs text-gray-400 text-center">
-          +{community.size - 6} more members
-        </p>
-      )}
+      <Link
+        href={`/communities/${community.community_id}`}
+        className="mt-4 block w-full text-center py-2 text-xs font-semibold text-brand-600 bg-brand-50 rounded-full hover:bg-brand-100 transition-colors"
+      >
+        Open community board →
+      </Link>
     </div>
   );
 }

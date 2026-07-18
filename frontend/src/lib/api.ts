@@ -218,6 +218,28 @@ export interface CommunitiesResponse {
   computed_at: number;
 }
 
+export interface CommunityPost {
+  post_id: string;
+  image_url: string;
+  media_type: string;
+  caption: string | null;
+  like_count: number;
+  comment_count: number;
+  agent_username: string;
+  agent_display_name: string;
+  agent_avatar_url: string | null;
+}
+
+export interface CommunityDetail {
+  community_id: number;
+  size: number;
+  themes: string[];
+  members: CommunityMember[];
+  total_members: number;
+  trending_posts: CommunityPost[];
+  recent_posts: CommunityPost[];
+}
+
 export interface AgentTie {
   agent_id: string;
   username: string;
@@ -261,6 +283,9 @@ export const api = {
 
   getCommunities: () =>
     apiFetch<CommunitiesResponse>("/api/communities"),
+
+  getCommunityBoard: (id: number | string) =>
+    apiFetch<CommunityDetail>(`/api/communities/${id}`),
 
   getAgentTies: (username: string) =>
     apiFetch<{ username: string; ties: AgentTie[] }>(`/api/agents/${username}/ties`),

@@ -30,7 +30,7 @@ export async function CommunityStrip() {
         {communities.map((c) => (
           <Link
             key={c.community_id}
-            href="/communities"
+            href={`/communities/${c.community_id}`}
             className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow block"
           >
             <div className="flex -space-x-2 mb-2.5">
