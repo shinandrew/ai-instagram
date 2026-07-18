@@ -112,31 +112,41 @@ class TiesResponse(BaseModel):
     ties: list[Tie]
 
 
-async def _describe_community(size: int, themes: list[str],
-                              mediums: list[str], bios: list[str]) -> str:
-    """One-sentence plain-English description of what a circle is about."""
+async def _describe_community(size: int, keywords: list[str],
+                              mediums: list[str], bios: list[str]) -> dict:
+    """One GPT call per circle: coherent name + description + 4 tags.
+    Keywords/mediums are CANDIDATES — the model picks what's actually topical."""
     try:
         prompt = (
             f"An emergent community of {size} AI agents formed on an AI-only social "
             "network, detected purely from who comments on whom. Their profile data:\n"
-            f"Common art mediums: {', '.join(mediums) or '(varied)'}\n"
-            f"Distinctive keywords: {', '.join(themes)}\n"
-            "Sample member bios:\n- " + "\n- ".join(b[:120] for b in bios[:8]) +
-            "\n\nWrite ONE sentence (max 26 words, English, no hashtags, no quotes) "
-            "describing what this circle is about — concrete and vivid, like a scene "
-            "report, e.g. 'Street photographers and neon-city documentarians trading "
-            "night shots and arguing about grain.'"
+            f"Common art mediums (with member counts): {', '.join(mediums) or '(varied)'}\n"
+            f"Candidate keywords (statistically distinctive, may be noise): {', '.join(keywords[:15])}\n"
+            "Sample member bios:\n- " + "\n- ".join(b[:120] for b in bios[:10]) +
+            "\n\nSummarise what this circle is actually about. Return JSON only:\n"
+            '{"name": "<1-3 word noun phrase completing \'The ... circle\', lowercase, '
+            'no word circle>", '
+            '"description": "<ONE vivid concrete sentence, max 26 words, English, no hashtags>", '
+            '"tags": ["<4 lowercase topic tags, 1-2 words each, that genuinely describe '
+            "the circle's shared subject matter and style — ignore candidate keywords "
+            'that are noise>"]}'
         )
         resp = await _get_openai().chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=70,
+            response_format={"type": "json_object"},
+            temperature=0.5,
+            max_tokens=160,
         )
-        return (resp.choices[0].message.content or "").strip().strip('"')[:220]
+        raw = json.loads(resp.choices[0].message.content or "{}")
+        name = str(raw.get("name", "")).strip().lower().removesuffix(" circle")[:30]
+        desc = str(raw.get("description", "")).strip().strip('"')[:220]
+        tags = [str(t).strip().lstrip("#").lower()[:25]
+                for t in (raw.get("tags") or []) if str(t).strip()][:4]
+        return {"name": name, "description": desc, "tags": tags}
     except Exception as e:
         logger.warning("community description failed: %s", e)
-        return ""
+        return {}
 
 
 def _theme_stem(w: str) -> str:
@@ -289,30 +299,9 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
             out.append(w)
         return out
 
-    used_stems: set[str] = set()
-    themes_per_community: list[list[str]] = []
-    for i in range(n_comm):
-        words = _ranked_words(profile_keywords[i])
-        top_mediums = [m for m, _ in medium_counts[i].most_common(3) if len(m) <= 30]
-        # Name: prefer a style medium that is (near-)unique to this circle
-        name = next((m for m in top_mediums if mdf[m] <= 2 and _theme_stem(m) not in used_stems), None)
-        if name is None:
-            name = next((w for w in words if _theme_stem(w) not in used_stems),
-                        words[0] if words else "")
-        if name:
-            used_stems.add(_theme_stem(name))
-        chips: list[str] = []
-        for cand in top_mediums + words:
-            if cand == name or _theme_stem(cand) in {_theme_stem(c) for c in chips}:
-                continue
-            if _theme_stem(cand) == _theme_stem(name):
-                continue
-            chips.append(cand)
-            if len(chips) == 4:
-                break
-        themes_per_community.append(([name] if name else []) + chips)
-
-    # Natural-language descriptions (cached by membership fingerprint)
+    # One cached GPT call per circle picks a coherent name + tags + description
+    # from the candidate signals (TF-IDF keywords are noisy: "delhi" can be
+    # distinctive without being what the circle is about).
     fingerprints = [
         hashlib.md5(",".join(sorted(str(n) for n, _ in ranked_full[i][:12])).encode()).hexdigest()
         for i in range(n_comm)
@@ -321,15 +310,48 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
     for i in range(n_comm):
         if fingerprints[i] not in _DESC_CACHE:
             desc_tasks[i] = _describe_community(
-                len(parts[i]), themes_per_community[i],
-                [m for m, _ in medium_counts[i].most_common(5)], sample_bios[i],
+                len(parts[i]),
+                _ranked_words(profile_keywords[i]),
+                [f"{m} ({c})" for m, c in medium_counts[i].most_common(5)],
+                sample_bios[i],
             )
     if desc_tasks:
         results = await asyncio.gather(*desc_tasks.values(), return_exceptions=True)
         for i, res in zip(desc_tasks.keys(), results):
-            if isinstance(res, str) and res:
+            if isinstance(res, dict) and res.get("description"):
                 _DESC_CACHE[fingerprints[i]] = res
-    descriptions = [_DESC_CACHE.get(fp) for fp in fingerprints]
+
+    used_stems: set[str] = set()
+    themes_per_community: list[list[str]] = []
+    descriptions: list[str | None] = []
+    for i in range(n_comm):
+        info = _DESC_CACHE.get(fingerprints[i], {})
+        descriptions.append(info.get("description") or None)
+
+        words = _ranked_words(profile_keywords[i])
+        top_mediums = [m for m, _ in medium_counts[i].most_common(3) if len(m) <= 30]
+
+        # Name: GPT's pick, unless it collides with an earlier circle's name
+        name = (info.get("name") or "").strip()
+        if not name or _theme_stem(name) in used_stems:
+            name = next((m for m in top_mediums if mdf[m] <= 2 and _theme_stem(m) not in used_stems), None)
+        if not name:
+            name = next((w for w in words if _theme_stem(w) not in used_stems),
+                        words[0] if words else "")
+        if name:
+            used_stems.add(_theme_stem(name))
+
+        # Tags: GPT's topical picks, padded from mediums/keywords if short
+        chips: list[str] = []
+        for cand in (info.get("tags") or []) + top_mediums + words:
+            if not cand or cand == name or _theme_stem(cand) == _theme_stem(name):
+                continue
+            if _theme_stem(cand) in {_theme_stem(c) for c in chips}:
+                continue
+            chips.append(cand)
+            if len(chips) == 4:
+                break
+        themes_per_community.append(([name] if name else []) + chips)
 
     communities: list[Community] = []
     for idx, (part, deg) in enumerate(zip(parts, ranked_members)):
