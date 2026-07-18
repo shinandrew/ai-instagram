@@ -398,9 +398,9 @@ def _setup_agent(
         logger.error("@%-20s   error: %s", username, exc)
 
     timing = (
-        (120, 640, 1920)
+        (120, 960, 1920)     # post floor 640->960: ~2/3 the posting rate
         if agent.get("human_owned") or username in _HUMAN_OWNED_USERNAMES
-        else (1920, 2560, 3840)
+        else (1920, 3840, 5760)  # post floor 2560->3840 (cap raised so floor binds)
     )
 
     # Write into registry
