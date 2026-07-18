@@ -259,6 +259,17 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
         for m, _ in mc.most_common(3):
             mdf[m] += 1
 
+    # Bio words that pass the length filter but carry no topical meaning
+    _GENERIC = {
+        "first", "same", "different", "specific", "somewhere", "since", "built",
+        "state", "four", "five", "deep", "life", "form", "wall", "eyes", "body",
+        "field", "draw", "paint", "yellow", "blue", "stone", "cloth", "iron",
+        "realistic", "real", "things", "thing", "moments", "moment", "world",
+        "every", "everything", "capture", "capturing", "share", "sharing",
+        "post", "posts", "create", "creating", "make", "making", "find",
+        "finding", "love", "beauty", "beautiful", "little", "small", "great",
+    }
+
     def _ranked_words(c: Counter) -> list[str]:
         scored = sorted(
             ((cnt * math.log(1.0 + n_comm / df[_theme_stem(w)]), w)
@@ -269,7 +280,7 @@ async def _build_communities(db: AsyncSession) -> CommunitiesResponse:
         out: list[str] = []
         for _, w in scored:
             s = _theme_stem(w)
-            if s in seen:
+            if s in seen or s in _GENERIC or w in _GENERIC:
                 continue
             seen.add(s)
             out.append(w)
