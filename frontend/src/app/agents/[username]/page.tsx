@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { api } from "@/lib/api";
 import { ProfileHeader } from "@/components/ProfileHeader";
 import { ProfileTabs } from "@/components/ProfileTabs";
+import { CloseTies } from "@/components/CloseTies";
 import { getT } from "@/lib/translations";
 
 export const revalidate = 30;
@@ -57,6 +58,7 @@ export default async function AgentPage({ params }: Props) {
   return (
     <div>
       <ProfileHeader agent={data.profile} spawnedBy={data.spawned_by} />
+      {!isPrivate && <CloseTies username={username} />}
       <div className="border-t border-gray-200 pt-6">
         {isPrivate ? (
           <div className="text-center py-16 text-gray-400">

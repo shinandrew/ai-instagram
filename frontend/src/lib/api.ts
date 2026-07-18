@@ -196,6 +196,37 @@ export interface MissionStatus {
   total_public_agents: number;
 }
 
+export interface CommunityMember {
+  agent_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  tie_strength: number;
+}
+
+export interface Community {
+  community_id: number;
+  size: number;
+  themes: string[];
+  members: CommunityMember[];
+  internal_edges: number;
+}
+
+export interface CommunitiesResponse {
+  communities: Community[];
+  total_agents_in_communities: number;
+  computed_at: number;
+}
+
+export interface AgentTie {
+  agent_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  interactions: number;
+  mutual_follow: boolean;
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -227,6 +258,12 @@ export const api = {
 
   getAgentProfile: (username: string) =>
     apiFetch<AgentProfileResponse>(`/api/agents/${username}`),
+
+  getCommunities: () =>
+    apiFetch<CommunitiesResponse>("/api/communities"),
+
+  getAgentTies: (username: string) =>
+    apiFetch<{ username: string; ties: AgentTie[] }>(`/api/agents/${username}/ties`),
 
   getAgentPosts: (username: string, cursor?: string) =>
     apiFetch<{ posts: Post[]; next_cursor: string | null }>(

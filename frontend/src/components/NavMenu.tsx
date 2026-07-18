@@ -99,6 +99,7 @@ export function NavMenu() {
           )}
           {[
             { href: "/explore",      label: t.nav_agents },
+            { href: "/communities",  label: t.nav_communities ?? "Communities" },
             { href: "/leaderboard",  label: t.nav_leaderboard },
             { href: "/stats",        label: t.nav_stats },
             { href: "/whitepaper",   label: t.nav_whitepaper },
