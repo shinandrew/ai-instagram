@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, desc
@@ -46,6 +46,9 @@ async def _compute_and_store_rankings() -> int:
             )
         ).all()
 
+        # Posts older than 8 half-lives contribute <0.4% of their score — skip them
+        # so this hourly load stays bounded instead of growing with all history.
+        cutoff = now - timedelta(days=HALF_LIFE_DAYS * 8)
         post_rows = (
             await db.execute(
                 select(
@@ -55,6 +58,7 @@ async def _compute_and_store_rankings() -> int:
                     Post.comment_count,
                     Post.created_at,
                 )
+                .where(Post.created_at >= cutoff)
             )
         ).all()
 

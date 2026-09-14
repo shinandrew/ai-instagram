@@ -184,6 +184,12 @@ _HUMAN_OWNED_USERNAMES = {
     "daividhockney",
 }
 
+# Budget for non-owned (platform-spawned) agents; human-owned agents are unaffected.
+#   NON_OWNED_IMAGE_HOURS — at most one image (post or visual reply) per this many hours
+#   NON_OWNED_STEP_HOURS  — minimum hours between actions (likes/comments/follows)
+NON_OWNED_IMAGE_HOURS = float(os.environ.get("NON_OWNED_IMAGE_HOURS", "168"))
+NON_OWNED_STEP_HOURS  = float(os.environ.get("NON_OWNED_STEP_HOURS",  "48"))
+
 
 def require(name: str) -> str:
     val = os.environ.get(name, "").strip()
@@ -219,7 +225,7 @@ _clients: dict[str, object] = {}   # agent_id → AgentClient (None = setup in p
 _brains:  dict[str, object] = {}   # agent_id → AgentBrain
 _states:  dict[str, dict]   = {}   # agent_id → step state dict (persisted across steps)
 _cbs:     dict[str, dict]   = {}   # agent_id → {on_decision, on_post, on_error}
-_timings: dict[str, tuple]  = {}   # agent_id → (min_wait, min_wait_post, max_wait) in minutes
+_timings: dict[str, dict]   = {}   # agent_id → step() timing kwargs
 _setting_up: set[str]       = set()  # agent_ids currently being set up
 _registry_lock = threading.Lock()
 
@@ -243,7 +249,7 @@ def _run_and_reschedule(agent_id: str) -> None:
         brain   = _brains.get(agent_id)
         state   = _states.setdefault(agent_id, {})
         cbs     = _cbs.get(agent_id, {})
-        timing  = _timings.get(agent_id, (0, 0, 0))
+        timing  = _timings.get(agent_id, {})
 
     if not client or not brain:
         # Still being set up — retry in 60s
@@ -253,13 +259,11 @@ def _run_and_reschedule(agent_id: str) -> None:
     try:
         wait_secs = client.step(
             brain,
-            state                = state,
-            on_decision          = cbs.get("on_decision"),
-            on_post              = cbs.get("on_post"),
-            on_error             = cbs.get("on_error"),
-            min_wait_minutes     = timing[0],
-            min_wait_post_minutes= timing[1],
-            max_wait_minutes     = timing[2],
+            state       = state,
+            on_decision = cbs.get("on_decision"),
+            on_post     = cbs.get("on_post"),
+            on_error    = cbs.get("on_error"),
+            **timing,
         )
     except Exception as exc:
         username = _clients.get(agent_id, {}) and ""  # best-effort
@@ -304,9 +308,11 @@ def _setup_agent(
 
     agent_id = agent["agent_id"]
     username = agent["username"]
+    owned    = bool(agent.get("human_owned")) or username in _HUMAN_OWNED_USERNAMES
 
-    # Avatar generation for agents that have posts but no avatar yet
-    if agent.get("post_count", 0) > 0 and not agent.get("avatar_url"):
+    # Avatar generation for owned agents that have posts but no avatar yet
+    # (non-owned agents get their avatar from their first post image instead)
+    if owned and agent.get("post_count", 0) > 0 and not agent.get("avatar_url"):
         try:
             from avatar import generate_and_upload as gen_avatar
             gen_avatar(agent, api_url, hf_token=hf_token)
@@ -331,7 +337,8 @@ def _setup_agent(
         hf_gen    = HuggingFaceGenerator(token=hf_token) if hf_token else None
         pol_gen   = PollinationsGenerator(max_retries=1)  # semaphore must not be held during retries
         generator = _FallbackGenerator(hf_gen, pol_gen)
-        video_gen = HuggingFaceVideoGenerator(token=hf_token) if hf_token else None
+        # Video (HF pay-as-you-go) only for human-owned agents
+        video_gen = HuggingFaceVideoGenerator(token=hf_token) if hf_token and owned else None
         client    = AgentClient(
             api_key         = agent["api_key"],
             api_url         = api_url,
@@ -342,8 +349,8 @@ def _setup_agent(
 
     human_aware = _is_human_aware(agent["agent_id"], human_pleaser_ratio)
     logger.info(
-        "Starting agent @%s (%s) [brain=%s, images=%s, human_aware=%s]",
-        username, agent["display_name"], brain_model, image_mode, human_aware,
+        "Starting agent @%s (%s) [brain=%s, images=%s, human_aware=%s, owned=%s]",
+        username, agent["display_name"], brain_model, image_mode, human_aware, owned,
     )
 
     _LANG_NAMES = {
@@ -397,11 +404,20 @@ def _setup_agent(
     def on_error(exc: Exception) -> None:
         logger.error("@%-20s   error: %s", username, exc)
 
-    timing = (
-        (120, 960, 1920)     # post floor 640->960: ~2/3 the posting rate
-        if agent.get("human_owned") or username in _HUMAN_OWNED_USERNAMES
-        else (1920, 3840, 5760)  # post floor 2560->3840 (cap raised so floor binds)
-    )
+    if owned:
+        # post floor 640->960: ~2/3 the posting rate
+        timing = dict(min_wait_minutes=120, min_wait_post_minutes=960, max_wait_minutes=1920)
+    else:
+        # Every step here used to be a forced post (steps are >24h apart), so the
+        # image interval, not the step floor, is what bounds HF image spend.
+        step_mins = int(NON_OWNED_STEP_HOURS * 60)
+        timing = dict(
+            min_wait_minutes         = step_mins,
+            min_wait_post_minutes    = step_mins,
+            max_wait_minutes         = step_mins * 2,
+            force_post_after_hours   = NON_OWNED_IMAGE_HOURS,
+            min_image_interval_hours = NON_OWNED_IMAGE_HOURS,
+        )
 
     # Write into registry
     with _registry_lock:
@@ -508,6 +524,10 @@ def main() -> None:
         max_workers, brain_model, brain_provider,
         image_mode if image_mode == "openai" else "hf→pollinations (fallback)",
         human_pleaser_ratio * 100,
+    )
+    logger.info(
+        "Non-owned agent budget: ≤1 image per %.0fh, ≥%.0fh between actions, no video",
+        NON_OWNED_IMAGE_HOURS, NON_OWNED_STEP_HOURS,
     )
 
     agent_kwargs = dict(

@@ -312,11 +312,18 @@ class AgentClient:
         min_wait_minutes: int = 0,
         min_wait_post_minutes: int = 0,
         max_wait_minutes: int = 0,
+        force_post_after_hours: float = 24,
+        min_image_interval_hours: float = 0,
     ) -> float:
         """
         Run ONE proactive decision cycle and return seconds to wait before
         the next call.  ``state`` is a mutable dict the caller must persist
         across calls (used to track ``_last_image_at``).
+
+        ``force_post_after_hours`` — force a post once this long has passed
+        without any image output.  ``min_image_interval_hours`` — hard budget:
+        no post or visual-reply image until this long after the last one
+        (the brain's choice is downgraded to a like / text-only comment).
         """
         error_occurred = False
         decision = None
@@ -338,7 +345,7 @@ class AgentClient:
             must_post = (
                 post_count == 0
                 or hours_since_image is None
-                or hours_since_image > 24
+                or hours_since_image > force_post_after_hours
             )
             if must_post:
                 context["_force_post"] = True
@@ -359,6 +366,23 @@ class AgentClient:
                     post_count,
                     f"{hours_since_image:.1f}h" if hours_since_image is not None else "never",
                 )
+
+            # Image budget: too soon since the last image → no generation this step
+            if (
+                not must_post
+                and min_image_interval_hours > 0
+                and hours_since_image is not None
+                and hours_since_image < min_image_interval_hours
+            ):
+                import dataclasses as _dc
+                if decision.action == "post":
+                    decision = _dc.replace(decision, action="wait")
+                    logger.info(
+                        "Image budget: post → wait (%.1fh < %.1fh since last image)",
+                        hours_since_image, min_image_interval_hours,
+                    )
+                elif decision.action == "comment" and decision.comment_image_subject:
+                    decision = _dc.replace(decision, comment_image_subject=None)
 
             if decision.action == "wait":
                 feed = context.get("trending_feed", [])
