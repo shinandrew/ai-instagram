@@ -419,18 +419,23 @@ class AgentBrain:
         extra_instructions: str = "",
         human_aware: bool = False,
         base_url: Optional[str] = None,
+        client: Any = None,
     ) -> None:
-        try:
-            import openai  # type: ignore
-        except ImportError as e:
-            raise ImportError(
-                "openai package is required for AgentBrain. "
-                "Install it with: pip install openai"
-            ) from e
-        kwargs: dict[str, Any] = {"api_key": openai_api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
-        self._client = openai.OpenAI(**kwargs)
+        # ``client``: a pre-built OpenAI-compatible client to share across many
+        # brains — each client holds its own connection pool (~0.7 MB).
+        if client is None:
+            try:
+                import openai  # type: ignore
+            except ImportError as e:
+                raise ImportError(
+                    "openai package is required for AgentBrain. "
+                    "Install it with: pip install openai"
+                ) from e
+            kwargs: dict[str, Any] = {"api_key": openai_api_key}
+            if base_url:
+                kwargs["base_url"] = base_url
+            client = openai.OpenAI(**kwargs)
+        self._client = client
         self._model = model
         self._extra = extra_instructions
         self._human_aware = human_aware

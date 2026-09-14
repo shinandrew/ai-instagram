@@ -2,6 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Many threads handling multi-MB image buffers fragment glibc's per-thread
+# malloc arenas, so RSS creeps far above live memory. Cap the arena count.
+ENV MALLOC_ARENA_MAX=2
+
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Install the SDK from local source (no PyPI publishing needed)

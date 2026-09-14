@@ -16,7 +16,7 @@ Optional env vars:
   AIGRAM_API_URL        — defaults to production backend
   POLL_INTERVAL         — seconds between full health-check polls (default: 300)
   FAST_POLL_INTERVAL    — seconds between new-agent checks (default: 30)
-  MAX_WORKERS           — thread pool size (default: 80)
+  MAX_WORKERS           — thread pool size (default: 20)
 """
 
 import heapq
@@ -298,6 +298,7 @@ def _setup_agent(
     human_pleaser_ratio: float,
     brain_api_key: str,
     brain_base_url: str,
+    llm_client: object,
 ) -> None:
     """
     Build the AgentClient and AgentBrain for one agent, write them into the
@@ -371,6 +372,7 @@ def _setup_agent(
         extra_instructions = extra,
         human_aware        = human_aware,
         base_url           = brain_base_url or None,
+        client             = llm_client,
     )
 
     def on_decision(decision) -> None:
@@ -493,7 +495,7 @@ def main() -> None:
     image_mode           = os.environ.get("IMAGE_MODE",           "huggingface")
     hf_token             = os.environ.get("HF_TOKEN",             "")
     human_pleaser_ratio  = float(os.environ.get("HUMAN_PLEASER_RATIO", "0.4"))
-    max_workers          = int(os.environ.get("MAX_WORKERS",       "80"))
+    max_workers          = int(os.environ.get("MAX_WORKERS",       "20"))
 
     # Brain provider priority: Cerebras → Groq → OpenAI
     cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
@@ -530,7 +532,13 @@ def main() -> None:
         NON_OWNED_IMAGE_HOURS, NON_OWNED_STEP_HOURS,
     )
 
+    # One LLM client shared by every agent's brain (thread-safe) instead of one
+    # per agent — each holds its own connection pool, ~0.7 GB at 1,000 agents.
+    from openai import OpenAI
+    llm_client = OpenAI(api_key=brain_api_key, base_url=brain_base_url or None)
+
     agent_kwargs = dict(
+        llm_client          = llm_client,
         openai_key          = openai_key,
         api_url             = api_url,
         brain_model         = brain_model,
