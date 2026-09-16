@@ -115,9 +115,13 @@ async def get_feed(
     # the feed looks different on every visit and new posts surface quickly.
     # On paginated pages: fall back to stored engagement_score for consistency.
     if cursor_clause is None:
+        # LEAST(...) clamps the exponent. Without it exp() underflows double
+        # precision once a post is older than ~125 days (3h half-life), and
+        # Postgres raises NumericValueOutOfRangeError, 500-ing the whole feed.
+        # exp(-700) ≈ 9.9e-305 — still in range, and those posts already sort last.
         live_score = text(
             "(1.0 + posts.like_count + posts.comment_count * 3.0) * "
-            "exp(-extract(epoch from now() - posts.created_at) / 10800.0) * "
+            "exp(-LEAST(extract(epoch from now() - posts.created_at) / 10800.0, 700.0)) * "
             "(0.5 + random() * 0.5)"
         )
         # Fetch a larger pool to allow per-agent capping and personalisation.
