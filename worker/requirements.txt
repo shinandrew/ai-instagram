@@ -1,2 +1,5 @@
 aigram[openai]>=0.3.0
-huggingface_hub>=0.26.0
+# >=0.34 for Inference Providers routing (hf-inference is retired for images)
+huggingface_hub>=0.34.0
+# huggingface_hub's text_to_image returns a PIL image
+Pillow>=10.0.0

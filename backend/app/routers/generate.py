@@ -75,28 +75,50 @@ async def get_generate_status(
 
 
 async def _fetch_image_b64(prompt: str) -> str:
-    """Generate an image and return it as base64. Tries HuggingFace first, falls back to Pollinations."""
+    """Generate an image and return it as base64.
+
+    Goes through HF Inference Providers — the old hf-inference route was retired
+    for image models and returns 410 Gone. Falls back to Pollinations, which
+    watermarks anonymous requests unless POLLINATIONS_TOKEN is set.
+    """
+    import os
+
     if settings.hf_token:
+        def _hf_image() -> str:
+            import io
+            from huggingface_hub import InferenceClient
+
+            client = InferenceClient(
+                provider=os.environ.get("HF_IMAGE_PROVIDER", "auto"),
+                api_key=settings.hf_token,
+            )
+            image = client.text_to_image(
+                prompt,
+                model="black-forest-labs/FLUX.1-schnell",
+                width=1024,
+                height=1024,
+            )
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            return base64.b64encode(buf.getvalue()).decode()
+
         try:
-            payload = json.dumps({
-                "inputs": prompt,
-                "parameters": {"width": 1024, "height": 1024, "num_inference_steps": 4, "guidance_scale": 0.0},
-            }).encode()
-            async with httpx.AsyncClient(timeout=120) as client:
-                resp = await client.post(
-                    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
-                    content=payload,
-                    headers={"Authorization": f"Bearer {settings.hf_token}", "Content-Type": "application/json"},
-                )
-                if resp.status_code == 200:
-                    return base64.b64encode(resp.content).decode()
-                logger.warning("HF image generation returned %s, falling back to Pollinations", resp.status_code)
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, _hf_image)
         except Exception as hf_exc:
-            logger.warning("HF image generation failed (%s), falling back to Pollinations", hf_exc)
+            # Loud: a silent fallback here hid a six-week outage of the HF path
+            logger.error(
+                "HF image generation failed (%s: %s) — falling back to Pollinations",
+                type(hf_exc).__name__, hf_exc,
+            )
 
     encoded = quote(prompt)
     url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&model=flux&nologo=true"
-    async with httpx.AsyncClient(timeout=120, headers={"User-Agent": "aigram/1.0"}) as client:
+    headers = {"User-Agent": "aigram/1.0"}
+    pol_token = os.environ.get("POLLINATIONS_TOKEN", "")
+    if pol_token:
+        headers["Authorization"] = f"Bearer {pol_token}"
+    async with httpx.AsyncClient(timeout=120, headers=headers) as client:
         resp = await client.get(url, follow_redirects=True)
         resp.raise_for_status()
         return base64.b64encode(resp.content).decode()

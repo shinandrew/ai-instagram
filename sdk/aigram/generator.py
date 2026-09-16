@@ -91,13 +91,20 @@ class PollinationsGenerator(ImageGenerator):
         seed: Optional[int] = None,
         nologo: bool = True,
         max_retries: int = 3,
+        token: Optional[str] = None,
+        referrer: Optional[str] = None,
     ) -> None:
+        # ``nologo`` is only honoured for registered accounts — anonymous calls
+        # get a watermark and a downgraded model. Pass ``token`` (from
+        # auth.pollinations.ai) or ``referrer`` to authenticate.
         self._width = width
         self._height = height
         self._model = model
         self._seed = seed
         self._nologo = nologo
         self._max_retries = max_retries
+        self._token = token
+        self._referrer = referrer
 
     def generate(self, prompt: str) -> str:
         import base64
@@ -113,12 +120,17 @@ class PollinationsGenerator(ImageGenerator):
         }
         if self._seed is not None:
             params["seed"] = self._seed
+        if self._referrer:
+            params["referrer"] = self._referrer
 
         encoded = urllib.parse.quote(prompt)
         qs = urllib.parse.urlencode(params)
         url = f"{self.BASE}{encoded}?{qs}"
 
-        req = urllib.request.Request(url, headers={"User-Agent": "aigram/1.0"})
+        headers = {"User-Agent": "aigram/1.0"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        req = urllib.request.Request(url, headers=headers)
         for attempt in range(self._max_retries):
             try:
                 with urllib.request.urlopen(req, timeout=60) as resp:
@@ -135,19 +147,20 @@ class PollinationsGenerator(ImageGenerator):
 
 class HuggingFaceGenerator(ImageGenerator):
     """
-    Free image generation via HuggingFace Inference API (FLUX.1-schnell).
+    Image generation via HuggingFace Inference Providers (FLUX.1-schnell).
 
-    Requires a free HuggingFace account and User Access Token:
-      1. Create account at https://huggingface.co
-      2. Get token at https://huggingface.co/settings/tokens
-      3. Pass token here or set HF_TOKEN environment variable.
+    HF retired the ``hf-inference`` route for image models — it returns
+    410 Gone — so requests are routed through Inference Providers instead.
+    ``provider="auto"`` lets HF pick a provider the account can reach
+    (nscale / fal-ai / wavespeed); usage bills to the HF account's credits.
+
+    Requires a HuggingFace token with inference credits, and:
+        pip install huggingface_hub pillow
 
     Returns base64-encoded PNG bytes (not a URL).
     """
 
     generates_url: bool = False
-    # HF moved image generation to the router API (old /models/ endpoint returns 410)
-    HF_API = "https://router.huggingface.co/hf-inference/models/"
 
     def __init__(
         self,
@@ -155,54 +168,51 @@ class HuggingFaceGenerator(ImageGenerator):
         model: str = "black-forest-labs/FLUX.1-schnell",
         width: int = 1024,
         height: int = 1024,
-        max_retries: int = 4,
+        max_retries: int = 3,
+        provider: str = "auto",
     ) -> None:
         self._token = token
         self._model = model
         self._width = width
         self._height = height
         self._max_retries = max_retries
+        self._provider = provider
 
     def generate(self, prompt: str) -> str:
-        """Fetch image from HF Inference API and return base64-encoded bytes."""
+        """Generate through HF Inference Providers; returns base64-encoded PNG."""
         import base64
-        import json
+        import io
         import time
-        import urllib.error
 
-        url = f"{self.HF_API}{self._model}"
-        payload = json.dumps({
-            "inputs": prompt,
-            "parameters": {
-                "width": self._width,
-                "height": self._height,
-                "num_inference_steps": 4,
-                "guidance_scale": 0.0,
-            },
-        }).encode()
-        headers = {
-            "Authorization": f"Bearer {self._token}",
-            "Content-Type": "application/json",
-        }
+        try:
+            from huggingface_hub import InferenceClient
+        except ImportError as e:
+            raise ImportError(
+                "huggingface_hub is required for HuggingFaceGenerator. "
+                "Install it with: pip install huggingface_hub pillow"
+            ) from e
 
+        client = InferenceClient(provider=self._provider, api_key=self._token)
+
+        last_exc: Optional[Exception] = None
         for attempt in range(self._max_retries):
-            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
             try:
-                with urllib.request.urlopen(req, timeout=120) as resp:
-                    image_bytes = resp.read()
-                    return base64.b64encode(image_bytes).decode()
-            except urllib.error.HTTPError as e:
-                if e.code == 503:
-                    try:
-                        body = json.loads(e.read())
-                        wait = min(float(body.get("estimated_time", 20)), 60)
-                    except Exception:
-                        wait = 20
-                    if attempt < self._max_retries - 1:
-                        time.sleep(wait)
-                        continue
-                raise
-        raise RuntimeError("HuggingFace image generation failed after retries")
+                image = client.text_to_image(
+                    prompt,
+                    model=self._model,
+                    width=self._width,
+                    height=self._height,
+                )
+                buf = io.BytesIO()
+                image.save(buf, format="PNG")
+                return base64.b64encode(buf.getvalue()).decode()
+            except Exception as exc:  # provider hiccup, rate limit, exhausted credits
+                last_exc = exc
+                if attempt < self._max_retries - 1:
+                    time.sleep(5 * (attempt + 1))
+        raise RuntimeError(
+            f"HuggingFace image generation failed after {self._max_retries} attempts: {last_exc}"
+        ) from last_exc
 
 
 class HuggingFaceVideoGenerator(ImageGenerator):

@@ -79,6 +79,7 @@ class _FallbackGenerator:
     # Class-level availability — shared across all agent threads
     _hf_blocked_until: float = 0.0
     _hf_block_lock = threading.Lock()
+    _hf_fail_streak: int = 0
     _pol_blocked_until: float = 0.0
     _pol_block_lock = threading.Lock()
 
@@ -151,9 +152,19 @@ class _FallbackGenerator:
             try:
                 result, code = self._try_hf(prompt)
             except Exception as exc:
-                logger.warning("HF image generation unexpected error — falling back to Pollinations: %s", exc)
+                cls = type(self)
+                cls._hf_fail_streak += 1
+                # Escalate: a warning per failure is easy to miss in the firehose,
+                # which is how a six-week HF outage went unnoticed.
+                if cls._hf_fail_streak % 10 == 1:
+                    logger.error(
+                        "HF image path failing (%d in a row) — all images are coming "
+                        "from Pollinations. Last error: %s: %s",
+                        cls._hf_fail_streak, type(exc).__name__, exc,
+                    )
                 result = None
             if result is not None:
+                type(self)._hf_fail_streak = 0
                 return result
 
         # Try Pollinations
@@ -189,6 +200,16 @@ _HUMAN_OWNED_USERNAMES = {
 #   NON_OWNED_STEP_HOURS  — minimum hours between actions (likes/comments/follows)
 NON_OWNED_IMAGE_HOURS = float(os.environ.get("NON_OWNED_IMAGE_HOURS", "168"))
 NON_OWNED_STEP_HOURS  = float(os.environ.get("NON_OWNED_STEP_HOURS",  "48"))
+
+# Image routing: owned agents use HF Inference Providers (paid, better quality)
+# with Pollinations as a safety net; non-owned agents use Pollinations only.
+# Pollinations watermarks anonymous requests — POLLINATIONS_TOKEN (from
+# auth.pollinations.ai) removes the watermark and restores the flux model.
+POLLINATIONS_TOKEN    = os.environ.get("POLLINATIONS_TOKEN", "")
+POLLINATIONS_REFERRER = os.environ.get("POLLINATIONS_REFERRER", "")
+HF_IMAGE_PROVIDER     = os.environ.get("HF_IMAGE_PROVIDER", "auto")
+# Video is the most expensive HF line item — off unless explicitly enabled.
+ENABLE_VIDEO          = os.environ.get("ENABLE_VIDEO", "").lower() == "true"
 
 
 def require(name: str) -> str:
@@ -335,11 +356,21 @@ def _setup_agent(
             openai_api_key = openai_key,
         )
     else:
-        hf_gen    = HuggingFaceGenerator(token=hf_token) if hf_token else None
-        pol_gen   = PollinationsGenerator(max_retries=1)  # semaphore must not be held during retries
-        generator = _FallbackGenerator(hf_gen, pol_gen)
-        # Video (HF pay-as-you-go) only for human-owned agents
-        video_gen = HuggingFaceVideoGenerator(token=hf_token) if hf_token and owned else None
+        pol_gen = PollinationsGenerator(  # semaphore must not be held during retries
+            max_retries = 1,
+            token       = POLLINATIONS_TOKEN or None,
+            referrer    = POLLINATIONS_REFERRER or None,
+        )
+        if owned and hf_token:
+            # Owned agents: paid HF providers, with Pollinations as a safety net
+            hf_gen    = HuggingFaceGenerator(token=hf_token, provider=HF_IMAGE_PROVIDER)
+            generator = _FallbackGenerator(hf_gen, pol_gen)
+        else:
+            # Non-owned agents: Pollinations only — no HF spend, no 410 retries.
+            # Still wrapped, so the global image rate limiter and the Pollinations
+            # semaphore apply; calling pol_gen directly would bypass both.
+            generator = _FallbackGenerator(None, pol_gen)
+        video_gen = HuggingFaceVideoGenerator(token=hf_token) if hf_token and owned and ENABLE_VIDEO else None
         client    = AgentClient(
             api_key         = agent["api_key"],
             api_url         = api_url,
@@ -530,6 +561,13 @@ def main() -> None:
     logger.info(
         "Non-owned agent budget: ≤1 image per %.0fh, ≥%.0fh between actions, no video",
         NON_OWNED_IMAGE_HOURS, NON_OWNED_STEP_HOURS,
+    )
+    logger.info(
+        "Images: owned=HF providers (%s) → pollinations fallback | non-owned=pollinations only "
+        "(token=%s) | video=%s",
+        HF_IMAGE_PROVIDER,
+        "set" if POLLINATIONS_TOKEN else "MISSING — images will be watermarked",
+        "enabled" if ENABLE_VIDEO else "disabled",
     )
 
     # One LLM client shared by every agent's brain (thread-safe) instead of one
