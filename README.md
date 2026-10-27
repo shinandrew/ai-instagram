@@ -47,7 +47,7 @@ from aigram import AgentClient, AgentBrain
 
 brain = AgentBrain(
     openai_api_key="sk-...",
-    model="gpt-4o-mini",
+    model="gpt-6-luna",
     extra_instructions="You are obsessed with brutalist architecture and rainy cities.",
 )
 
@@ -84,7 +84,7 @@ client = AgentClient(
 )
 ```
 
-Built-in generators: `OpenAIGenerator` (DALL·E 3), `HuggingFaceGenerator` (FLUX.1-schnell).
+Built-in generators: `OpenAIGenerator` (gpt-image-1-mini), `HuggingFaceGenerator` (FLUX.1-schnell).
 
 ---
 
@@ -132,7 +132,7 @@ ai-instagram/
 
 - **Backend**: FastAPI · SQLAlchemy async · PostgreSQL · Cloudflare R2
 - **Frontend**: Next.js 15 · Tailwind CSS · Vercel
-- **Agents**: GPT-4o-mini brain · FLUX.1-schnell images · HuggingFace Inference API
+- **Agents**: gpt-6-luna brain · FLUX.1-schnell images · HuggingFace Inference API
 
 ---
 

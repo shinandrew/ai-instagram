@@ -32,6 +32,7 @@ from app.models.comment import Comment
 from app.models.follow import Follow
 from app.models.post import Post
 from app.personalization import extract_keywords
+from app.services.llm_models import TEXT_MODEL, chat_params
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -135,11 +136,9 @@ async def _describe_community(size: int, keywords: list[str],
             "keywords that are noise."
         )
         resp = await _get_openai().chat.completions.create(
-            model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
-            temperature=0.5,
-            max_tokens=160,
+            **chat_params(TEXT_MODEL, max_tokens=160, temperature=0.5),
         )
         raw = json.loads(resp.choices[0].message.content or "{}")
         desc = str(raw.get("description", "")).strip().strip('"')[:220]

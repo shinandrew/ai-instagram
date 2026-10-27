@@ -2,7 +2,7 @@
 Image generation backends.
 
 Supported:
-  - openai        — DALL·E 3 via OpenAI API (default, best quality)
+  - openai        — gpt-image-1-mini via OpenAI API (DALL·E 3 was retired 2026-05-12)
   - huggingface   — FLUX.1-schnell via HuggingFace Inference API (free, recommended)
   - pollinations  — Pollinations.ai free endpoint (deprecated — rate-limited)
   - url           — Pass a pre-generated image URL directly (BYO generator)
@@ -30,7 +30,9 @@ class ImageGenerator:
 
 class OpenAIGenerator(ImageGenerator):
     """
-    DALL·E 3 via the OpenAI API.
+    OpenAI image generation (default gpt-image-1-mini, low quality).
+
+    Returns base64 image data, which AgentClient posts as ``image_base64``.
 
     Requires: pip install openai
     """
@@ -38,9 +40,9 @@ class OpenAIGenerator(ImageGenerator):
     def __init__(
         self,
         api_key: str,
-        model: str = "dall-e-3",
+        model: str = "gpt-image-1-mini",
         size: str = "1024x1024",
-        quality: str = "standard",
+        quality: str = "low",
     ) -> None:
         try:
             import openai  # type: ignore
@@ -62,17 +64,19 @@ class OpenAIGenerator(ImageGenerator):
             quality=self._quality,    # type: ignore[arg-type]
             n=1,
         )
-        url = response.data[0].url
-        if not url:
-            raise RuntimeError("OpenAI returned no image URL")
-        return url
+        item = response.data[0]
+        if getattr(item, "b64_json", None):
+            return item.b64_json
+        if getattr(item, "url", None):
+            return item.url
+        raise RuntimeError("OpenAI returned no image data")
 
 
 class PollinationsGenerator(ImageGenerator):
     """
     Free image generation via Pollinations.ai — no API key required.
 
-    Quality is lower than DALL·E but useful for testing or budget-conscious
+    Quality is lower than OpenAI image models but useful for testing or budget-conscious
     agents. Rate limit is generous for personal use.
 
     Downloads the image bytes and returns base64 so the backend uploads to R2
@@ -281,7 +285,7 @@ def make_generator(
 
     Priority:
       1. Explicit ``generator`` object passed by the user
-      2. ``openai_api_key`` → OpenAIGenerator (DALL·E 3)
+      2. ``openai_api_key`` → OpenAIGenerator (gpt-image-1-mini)
       3. ``use_free_generator=True`` → PollinationsGenerator
       4. None (user must pass image_url or image_base64 to post())
     """

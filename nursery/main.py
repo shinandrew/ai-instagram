@@ -462,18 +462,13 @@ def _setup_agent(
         _setting_up.discard(agent_id)
 
     # ── First-post fast path ────────────────────────────────────────────────
-    # Brand-new agents get their first post via DALL-E 3 for reliability
-    # (~$0.04). HF/Pollinations are too flaky under load for a good first
-    # impression. After this the regular scheduler takes over.
-    if agent.get("post_count", 0) == 0 and openai_key:
-        logger.info("@%s first-post fast path (DALL-E)", username)
+    # Brand-new agents post immediately instead of waiting for the scheduler.
+    # (This path used DALL-E 3, which OpenAI retired on 2026-05-12; it now uses
+    # the agent's regular generator, i.e. FLUX via HF with Pollinations fallback.)
+    if agent.get("post_count", 0) == 0:
+        logger.info("@%s first-post fast path", username)
         try:
-            _first_client = AgentClient(
-                api_key        = agent["api_key"],
-                api_url        = api_url,
-                style          = style,
-                openai_api_key = openai_key,
-            )
+            _first_client = client
             _ctx = _first_client.get_context()
             _ctx["_force_post"] = True
             _decision = brain.decide(_ctx)
@@ -483,11 +478,11 @@ def _setup_agent(
                     caption = _decision.caption or _decision.subject,
                 )
                 on_post(_resp)
-                logger.info("@%s first post via DALL-E succeeded", username)
+                logger.info("@%s first post succeeded", username)
             else:
                 logger.warning("@%s brain gave no subject for first post — loop will retry", username)
         except Exception as exc:
-            logger.warning("@%s DALL-E first post failed: %s — loop will retry", username, exc)
+            logger.warning("@%s first post failed: %s — loop will retry", username, exc)
 
 
 def _register_agent(
@@ -528,9 +523,12 @@ def main() -> None:
     human_pleaser_ratio  = float(os.environ.get("HUMAN_PLEASER_RATIO", "0.4"))
     max_workers          = int(os.environ.get("MAX_WORKERS",       "20"))
 
-    # Brain provider priority: Cerebras → Groq → OpenAI
-    cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
-    groq_key     = os.environ.get("GROQ_API_KEY") or os.environ.get("GROK_API_KEY", "")
+    # Brain provider: OpenAI (gpt-6-luna) by default. Cerebras/Groq are used only
+    # when explicitly selected with BRAIN_PROVIDER, so a stray key cannot silently
+    # switch the agents' base model.
+    brain_choice = os.environ.get("BRAIN_PROVIDER", "openai").lower()
+    cerebras_key = os.environ.get("CEREBRAS_API_KEY", "") if brain_choice == "cerebras" else ""
+    groq_key     = (os.environ.get("GROQ_API_KEY") or os.environ.get("GROK_API_KEY", "")) if brain_choice == "groq" else ""
     if cerebras_key:
         brain_api_key  = cerebras_key
         brain_base_url = "https://api.cerebras.ai/v1"
@@ -544,7 +542,7 @@ def main() -> None:
     else:
         brain_api_key  = openai_key
         brain_base_url = ""
-        brain_model    = os.environ.get("BRAIN_MODEL", "gpt-4o-mini")
+        brain_model    = os.environ.get("BRAIN_MODEL", "gpt-6-luna")
         brain_provider = "openai"
 
     if not hf_token:
@@ -588,7 +586,7 @@ def main() -> None:
     )
 
     # Two separate pools:
-    #   setup_executor  — dedicated to new-agent onboarding (DALL-E first post).
+    #   setup_executor  — dedicated to new-agent onboarding (first post).
     #                     Small, isolated so regular cycle work never blocks it.
     #   step_executor   — runs regular proactive decision cycles for all agents.
     setup_executor = ThreadPoolExecutor(max_workers=10,         thread_name_prefix="setup")

@@ -20,6 +20,17 @@ logger = logging.getLogger("aigram.brain")
 
 ACTION = Literal["post", "like", "comment", "follow", "wait"]
 
+# gpt-4o / gpt-4o-mini are retired on 2027-01-14 (replacement: gpt-6-luna).
+DEFAULT_MODEL = "gpt-6-luna"
+
+
+def _sampling_kwargs(model: str, temperature: float, max_tokens: int = 800) -> dict[str, Any]:
+    """GPT-5+ OpenAI models reject non-default temperature and `max_tokens`;
+    other OpenAI-compatible providers (Cerebras, Groq) still accept them."""
+    if model.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4")):
+        return {"max_completion_tokens": max_tokens, "reasoning_effort": "none"}
+    return {"temperature": temperature, "max_tokens": max_tokens}
+
 _SYSTEM_PROMPT = """\
 You are the autonomous decision engine for an AI social media agent on AI·gram \
 — a platform where every account is an AI agent that posts AI-generated images.
@@ -407,7 +418,7 @@ class AgentBrain:
     openai_api_key:
         OpenAI API key. Required.
     model:
-        OpenAI model to use for decisions. Defaults to ``gpt-4o``.
+        OpenAI model to use for decisions. Defaults to ``gpt-6-luna``.
     extra_instructions:
         Additional persona notes appended to the system prompt.
     """
@@ -415,7 +426,7 @@ class AgentBrain:
     def __init__(
         self,
         openai_api_key: str,
-        model: str = "gpt-4o",
+        model: str = DEFAULT_MODEL,
         extra_instructions: str = "",
         human_aware: bool = False,
         base_url: Optional[str] = None,
@@ -464,7 +475,7 @@ class AgentBrain:
                 {"role": "user", "content": user_msg},
             ],
             response_format={"type": "json_object"},
-            temperature=1.0,
+            **_sampling_kwargs(self._model, 1.0),
         )
         raw = json.loads(resp.choices[0].message.content)
 
@@ -545,7 +556,7 @@ class AgentBrain:
                 {"role": "user", "content": user_msg},
             ],
             response_format={"type": "json_object"},
-            temperature=1.1,
+            **_sampling_kwargs(self._model, 1.1),
         )
         raw = json.loads(resp.choices[0].message.content)
 

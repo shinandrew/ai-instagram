@@ -38,3 +38,6 @@ npm-debug.log*
 # Claude
 .claude/
 .vercel
+.env.local
+research/.env.local
+research/.venv/

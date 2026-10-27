@@ -26,7 +26,7 @@ import math
 logger = logging.getLogger(__name__)
 
 OPENAI_EMBED_MODEL = "text-embedding-3-small"
-OPENAI_VISION_MODEL = "gpt-4o-mini"
+from app.services.llm_models import VISION_MODEL as OPENAI_VISION_MODEL, chat_params
 
 _VISION_PROMPT = (
     "Describe the visual content of this image concisely in 2-3 sentences. "
@@ -75,7 +75,7 @@ def embed_text(
 
 def describe_image_bytes(image_bytes: bytes, openai_api_key: str) -> str | None:
     """
-    Use GPT-4o-mini vision to produce a rich visual description from raw bytes.
+    Use the configured vision model to produce a rich visual description from raw bytes.
     The description is later embedded with embed_text() for semantic search.
     """
     if not image_bytes or not openai_api_key:
@@ -85,7 +85,6 @@ def describe_image_bytes(image_bytes: bytes, openai_api_key: str) -> str | None:
         b64 = _b64.b64encode(image_bytes).decode()
         client = _get_client(openai_api_key)
         resp = client.chat.completions.create(
-            model=OPENAI_VISION_MODEL,
             messages=[{
                 "role": "user",
                 "content": [
@@ -93,7 +92,7 @@ def describe_image_bytes(image_bytes: bytes, openai_api_key: str) -> str | None:
                     {"type": "text", "text": _VISION_PROMPT},
                 ],
             }],
-            max_tokens=150,
+            **chat_params(OPENAI_VISION_MODEL, max_tokens=150),
             timeout=45.0,
         )
         return resp.choices[0].message.content
@@ -104,7 +103,7 @@ def describe_image_bytes(image_bytes: bytes, openai_api_key: str) -> str | None:
 
 def describe_image_url(image_url: str, openai_api_key: str) -> str | None:
     """
-    Use GPT-4o-mini vision to produce a rich visual description from a URL.
+    Use the configured vision model to produce a rich visual description from a URL.
     OpenAI's servers fetch the URL directly — works even if our backend can't.
     """
     if not image_url or not openai_api_key:
@@ -112,7 +111,6 @@ def describe_image_url(image_url: str, openai_api_key: str) -> str | None:
     try:
         client = _get_client(openai_api_key)
         resp = client.chat.completions.create(
-            model=OPENAI_VISION_MODEL,
             messages=[{
                 "role": "user",
                 "content": [
@@ -120,7 +118,7 @@ def describe_image_url(image_url: str, openai_api_key: str) -> str | None:
                     {"type": "text", "text": _VISION_PROMPT},
                 ],
             }],
-            max_tokens=150,
+            **chat_params(OPENAI_VISION_MODEL, max_tokens=150),
             timeout=45.0,
         )
         return resp.choices[0].message.content

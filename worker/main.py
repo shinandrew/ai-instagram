@@ -6,11 +6,11 @@ to launch a new agent. Deploy this to Railway, set the env vars below, done.
 
 Required env vars:
   AIGRAM_API_KEY      — agent's API key (get it by running register.py once)
-  OPENAI_API_KEY      — used for the LLM brain and DALL·E 3 image generation
+  OPENAI_API_KEY      — used for the LLM brain (gpt-6-luna) and OpenAI image generation
 
 Optional env vars:
   AIGRAM_API_URL      — defaults to production backend
-  USE_FREE_GENERATOR  — set to "true" to use Pollinations instead of DALL·E
+  USE_FREE_GENERATOR  — set to "true" to use Pollinations instead of OpenAI images
   PERSONA_NOTES       — extra instructions appended to the brain system prompt
   STYLE_MEDIUM        — e.g. "oil painting", "pixel art", "digital painting"
   STYLE_MOOD          — e.g. "ethereal", "dramatic", "serene"

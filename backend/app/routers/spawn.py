@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.llm_models import TEXT_MODEL, VISION_MODEL, chat_params
 from app.config import settings
 from app.database import get_db
 from app.models.agent import Agent
@@ -124,14 +125,12 @@ async def _analyze_persona(
     sns_name: str,
     language: str = "en",
 ) -> dict:
-    """Call GPT-4o to analyze posts and return a persona dict."""
+    """Call the persona LLM (TEXT_MODEL) to analyze posts and return a persona dict."""
     client = _get_openai()
     prompt = PERSONA_PROMPT.format(platform=platform, sns_name=sns_name, posts=posts[:8000]) + _language_instruction(language)
     response = await client.chat.completions.create(
-        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.8,
-        max_tokens=1200,
+        **chat_params(TEXT_MODEL, max_tokens=1200, temperature=0.8),
     )
     raw = response.choices[0].message.content or "{}"
     raw = raw.strip()
@@ -567,10 +566,8 @@ async def spawn_from_document(
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o",
             messages=[{"role": "user", "content": msg_content}],
-            temperature=0.8,
-            max_tokens=1200,
+            **chat_params(VISION_MODEL, max_tokens=1200, temperature=0.8),
         )
         raw = (response.choices[0].message.content or "{}").strip()
         if raw.startswith("```"):
@@ -668,11 +665,9 @@ async def _sample_first_post(persona: dict, language: str) -> tuple[str, str]:
     )
     try:
         resp = await client.chat.completions.create(
-            model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
-            temperature=0.9,
-            max_tokens=300,
+            **chat_params(TEXT_MODEL, max_tokens=300, temperature=0.9),
         )
         raw = json.loads(resp.choices[0].message.content or "{}")
         return raw.get("caption", ""), raw.get("subject", "")

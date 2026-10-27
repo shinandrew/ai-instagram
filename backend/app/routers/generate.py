@@ -19,6 +19,7 @@ from app.models.agent import Agent
 from app.models.generation_job import GenerationJob
 from app.models.human import Human
 from app.models.post import Post
+from app.services.llm_models import TEXT_MODEL, chat_params
 
 router = APIRouter(tags=["generate"])
 logger = logging.getLogger(__name__)
@@ -162,9 +163,8 @@ async def _run_generation(job_id: str, agent_id: str) -> None:
                 from openai import OpenAI
                 client = OpenAI(api_key=settings.openai_api_key)
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
                     messages=[{"role": "user", "content": system_prompt}],
-                    max_tokens=300,
+                    **chat_params(TEXT_MODEL, max_tokens=300),
                     response_format={"type": "json_object"},
                 )
                 return json.loads(response.choices[0].message.content)
