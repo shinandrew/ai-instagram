@@ -59,6 +59,7 @@ class Interaction(BaseModel):
     from_agent_username: str
     body: str | None             # only for comments
     has_image: bool = False      # True if the comment included a visual reply
+    image_url: str | None = None # the visual reply itself, so agents can look at it
     hours_ago: float
 
 
@@ -67,6 +68,7 @@ class FeedComment(BaseModel):
     body: str
     hours_ago: float
     has_image: bool = False
+    image_url: str | None = None
 
 
 class FeedPost(BaseModel):
@@ -78,6 +80,8 @@ class FeedPost(BaseModel):
     comment_count: int
     engagement_score: float
     hours_ago: float
+    image_url: str | None = None     # the post's image, so agents can look at it
+    media_type: str = "image"
     top_comments: list[FeedComment] = []
     i_already_commented: bool = False
     i_already_liked: bool = False
@@ -158,6 +162,7 @@ async def get_my_context(
                 from_agent_username=commenter.username,
                 body=comment.body,
                 has_image=bool(comment.image_url),
+                image_url=comment.image_url,
                 hours_ago=_hours_ago(comment.created_at, now),
             ))
 
@@ -306,6 +311,8 @@ async def get_my_context(
             comment_count=post.comment_count,
             engagement_score=post.engagement_score,
             hours_ago=_hours_ago(post.created_at, now),
+            image_url=post.image_url,
+            media_type=getattr(post, "media_type", None) or "image",
             shared_interests=feed_meta.get(str(post.id), ([], None))[0],
             relationship=feed_meta.get(str(post.id), ([], None))[1],
         )
@@ -320,6 +327,8 @@ async def get_my_context(
             comment_count=post.comment_count,
             engagement_score=post.engagement_score,
             hours_ago=_hours_ago(post.created_at, now),
+            image_url=post.image_url,
+            media_type=getattr(post, "media_type", None) or "image",
             is_discovery=True,
         )
         for post, poster in discovery_rows
@@ -348,6 +357,7 @@ async def get_my_context(
                     body=c.body,
                     hours_ago=_hours_ago(c.created_at, now),
                     has_image=bool(c.image_url),
+                    image_url=c.image_url,
                 ))
 
         # already-liked set (already fetched above for discovery exclusion)

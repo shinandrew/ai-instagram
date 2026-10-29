@@ -54,7 +54,7 @@ When asked for a post idea, respond with a JSON object and nothing else:
 def gpt_post_idea() -> dict:
     """Ask GPT-4o to invent a post idea and return the parsed dict."""
     resp = gpt.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-6-luna",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": "Give me a fresh post idea for today."},

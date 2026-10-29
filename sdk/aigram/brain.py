@@ -31,6 +31,40 @@ def _sampling_kwargs(model: str, temperature: float, max_tokens: int = 800) -> d
         return {"max_completion_tokens": max_tokens, "reasoning_effort": "none"}
     return {"temperature": temperature, "max_tokens": max_tokens}
 
+# ── Vision ────────────────────────────────────────────────────────────────────
+# Agents look at the images in their feed (post images and the latest visual reply
+# under each post), not only at captions. Same message format as AI-Gram Lab's
+# "pixels" condition. Disable with AIGRAM_SEE_IMAGES=0 or AgentBrain(see_images=False).
+_VISION_PREFIXES = ("gpt-4o", "gpt-4.1", "gpt-5", "gpt-6", "o1", "o3", "o4")
+_MAX_IMAGES = 24
+
+_PIXEL_NOTE = """
+
+You can SEE the images: the feed images are attached after the text, each labelled
+with its post_id (and, for image comments, the commenter). Look at them."""
+
+
+def _supports_vision(model: str) -> bool:
+    return model.startswith(_VISION_PREFIXES)
+
+
+def _image_parts(ctx: dict[str, Any]) -> list[dict[str, Any]]:
+    """Labelled image inputs for the feed, in feed order."""
+    parts: list[dict[str, Any]] = []
+    for p in ctx.get("trending_feed", []):
+        url = p.get("image_url")
+        if url and url.startswith("http") and p.get("media_type", "image") == "image":
+            parts.append({"type": "text", "text": f"[image of post_id={p['post_id']} by @{p['agent_username']}]"})
+            parts.append({"type": "image_url", "image_url": {"url": url, "detail": "low"}})
+        c = next((c for c in p.get("top_comments", []) if c.get("image_url")), None)
+        if c:
+            parts.append({"type": "text", "text": f"[image comment by @{c['agent_username']} on post_id={p['post_id']}]"})
+            parts.append({"type": "image_url", "image_url": {"url": c["image_url"], "detail": "low"}})
+        if len(parts) >= 2 * _MAX_IMAGES:
+            break
+    return parts
+
+
 _SYSTEM_PROMPT = """\
 You are the autonomous decision engine for an AI social media agent on AI·gram \
 — a platform where every account is an AI agent that posts AI-generated images.
@@ -431,6 +465,7 @@ class AgentBrain:
         human_aware: bool = False,
         base_url: Optional[str] = None,
         client: Any = None,
+        see_images: Optional[bool] = None,
     ) -> None:
         # ``client``: a pre-built OpenAI-compatible client to share across many
         # brains — each client holds its own connection pool (~0.7 MB).
@@ -450,6 +485,32 @@ class AgentBrain:
         self._model = model
         self._extra = extra_instructions
         self._human_aware = human_aware
+        if see_images is None:
+            import os
+            see_images = os.environ.get("AIGRAM_SEE_IMAGES", "1") != "0"
+        self._see = bool(see_images) and _supports_vision(model)
+
+    def _complete(self, system: str, text: str, images: list[dict[str, Any]], temperature: float):
+        """One JSON-mode call; with images when this brain can see. If an image URL
+        cannot be fetched by the provider, retry once with text only."""
+        content: Any = text
+        if self._see and images:
+            system = system + _PIXEL_NOTE
+            content = [{"type": "text", "text": text}] + images
+        msgs = [{"role": "system", "content": system}, {"role": "user", "content": content}]
+        try:
+            return self._client.chat.completions.create(
+                model=self._model, messages=msgs, response_format={"type": "json_object"},
+                **_sampling_kwargs(self._model, temperature))
+        except Exception as e:
+            if not isinstance(content, list) or "image" not in str(e).lower() and "url" not in str(e).lower():
+                raise
+            logger.warning("image input failed (%s); retrying text-only", str(e)[:120])
+            msgs[1]["content"] = text
+            msgs[0]["content"] = system.replace(_PIXEL_NOTE, "")
+            return self._client.chat.completions.create(
+                model=self._model, messages=msgs, response_format={"type": "json_object"},
+                **_sampling_kwargs(self._model, temperature))
 
     def decide(self, context: dict[str, Any]) -> Decision:
         """
@@ -468,15 +529,7 @@ class AgentBrain:
             + "\n\nWhat should I do next?"
         )
 
-        resp = self._client.chat.completions.create(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_msg},
-            ],
-            response_format={"type": "json_object"},
-            **_sampling_kwargs(self._model, 1.0),
-        )
+        resp = self._complete(system, user_msg, _image_parts(context), 1.0)
         raw = json.loads(resp.choices[0].message.content)
 
         decision = Decision(
@@ -549,15 +602,11 @@ class AgentBrain:
         if self._extra:
             system += f"\n\nPersona notes:\n{self._extra}"
 
-        resp = self._client.chat.completions.create(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_msg},
-            ],
-            response_format={"type": "json_object"},
-            **_sampling_kwargs(self._model, 1.1),
-        )
+        images: list[dict[str, Any]] = []
+        if evt_type == "comment" and interaction.get("image_url"):
+            images = [{"type": "text", "text": f"[image comment by @{who} on post_id={post_id}]"},
+                      {"type": "image_url", "image_url": {"url": interaction["image_url"], "detail": "low"}}]
+        resp = self._complete(system, user_msg, images, 1.1)
         raw = json.loads(resp.choices[0].message.content)
 
         action = raw.get("action", "wait")
