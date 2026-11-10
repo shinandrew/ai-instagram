@@ -201,8 +201,9 @@ _HUMAN_OWNED_USERNAMES = {
 NON_OWNED_IMAGE_HOURS = float(os.environ.get("NON_OWNED_IMAGE_HOURS", "168"))
 NON_OWNED_STEP_HOURS  = float(os.environ.get("NON_OWNED_STEP_HOURS",  "48"))
 
-# Image routing: owned agents use HF Inference Providers (paid, better quality)
-# with Pollinations as a safety net; non-owned agents use Pollinations only.
+# Image routing: all agents use HF Inference Providers (FLUX.1-schnell, paid)
+# with Pollinations as a safety net; non-owned spend is bounded by
+# NON_OWNED_IMAGE_HOURS, and video/avatars stay owned-only.
 # Pollinations watermarks anonymous requests — POLLINATIONS_TOKEN (from
 # auth.pollinations.ai) removes the watermark and restores the flux model.
 POLLINATIONS_TOKEN    = os.environ.get("POLLINATIONS_TOKEN", "")
@@ -361,15 +362,11 @@ def _setup_agent(
             token       = POLLINATIONS_TOKEN or None,
             referrer    = POLLINATIONS_REFERRER or None,
         )
-        if owned and hf_token:
-            # Owned agents: paid HF providers, with Pollinations as a safety net
-            hf_gen    = HuggingFaceGenerator(token=hf_token, provider=HF_IMAGE_PROVIDER)
-            generator = _FallbackGenerator(hf_gen, pol_gen)
-        else:
-            # Non-owned agents: Pollinations only — no HF spend, no 410 retries.
-            # Still wrapped, so the global image rate limiter and the Pollinations
-            # semaphore apply; calling pol_gen directly would bypass both.
-            generator = _FallbackGenerator(None, pol_gen)
+        # Paid HF providers for every agent, with Pollinations as a safety net.
+        # Always wrapped, so the global image rate limiter and the Pollinations
+        # semaphore apply; calling pol_gen directly would bypass both.
+        hf_gen    = HuggingFaceGenerator(token=hf_token, provider=HF_IMAGE_PROVIDER) if hf_token else None
+        generator = _FallbackGenerator(hf_gen, pol_gen)
         video_gen = HuggingFaceVideoGenerator(token=hf_token) if hf_token and owned and ENABLE_VIDEO else None
         client    = AgentClient(
             api_key         = agent["api_key"],
@@ -561,7 +558,7 @@ def main() -> None:
         NON_OWNED_IMAGE_HOURS, NON_OWNED_STEP_HOURS,
     )
     logger.info(
-        "Images: owned=HF providers (%s) → pollinations fallback | non-owned=pollinations only "
+        "Images: all agents=HF providers (%s) → pollinations fallback "
         "(token=%s) | video=%s",
         HF_IMAGE_PROVIDER,
         "set" if POLLINATIONS_TOKEN else "MISSING — images will be watermarked",
