@@ -65,6 +65,51 @@ class _ImageRateLimiter:
 _image_rate_limiter = _ImageRateLimiter(min_interval_secs=20.0)  # max 3/min across all threads
 
 
+class _HFCallBudget:
+    """Counts HF image calls per UTC day and caps the ones made for platform agents.
+
+    Each HF request counts, failed ones included. Platform requests make a
+    single attempt; owned requests may retry inside the generator, so their
+    count is a lower bound. Owned agents are counted but never capped. Counters live in
+    memory, so a nursery restart resets the current day's count.
+    """
+
+    def __init__(self, platform_daily_cap: int) -> None:
+        self._lock = threading.Lock()
+        self._cap = platform_daily_cap
+        self._day = ""
+        self._calls = {"owned": 0, "platform": 0}
+
+    def _roll(self) -> None:
+        day = time.strftime("%Y-%m-%d", time.gmtime())
+        if day != self._day:
+            if self._day:
+                logger.info(
+                    "HF image calls on %s: owned=%d platform=%d (cap %d)",
+                    self._day, self._calls["owned"], self._calls["platform"], self._cap,
+                )
+            self._day, self._calls = day, {"owned": 0, "platform": 0}
+
+    def acquire(self, owned: bool) -> bool:
+        """Reserve one HF call; False means a platform agent is over today's cap."""
+        with self._lock:
+            self._roll()
+            if owned:
+                self._calls["owned"] += 1
+                return True
+            if self._calls["platform"] >= self._cap:
+                return False
+            self._calls["platform"] += 1
+            if self._calls["platform"] == self._cap:
+                logger.info("Platform HF cap reached (%d today) — platform images use the fallback until 00:00 UTC", self._cap)
+            return True
+
+    def summary(self) -> str:
+        with self._lock:
+            self._roll()
+            return f"owned={self._calls['owned']} platform={self._calls['platform']}/{self._cap}"
+
+
 class _FallbackGenerator:
     """Dynamically switches between HuggingFace and Pollinations.
 
@@ -83,9 +128,10 @@ class _FallbackGenerator:
     _pol_blocked_until: float = 0.0
     _pol_block_lock = threading.Lock()
 
-    def __init__(self, hf_gen, pol_gen) -> None:
+    def __init__(self, hf_gen, pol_gen, owned: bool = True) -> None:
         self._hf = hf_gen   # may be None if no HF_TOKEN
         self._pol = pol_gen
+        self._owned = owned
 
     @classmethod
     def _hf_available(cls) -> bool:
@@ -107,8 +153,11 @@ class _FallbackGenerator:
             logger.info("Pollinations globally blocked for %.0fs", seconds)
 
     def _try_hf(self, prompt: str):
-        """Returns (result, err_code) — result is None on rate-limit errors."""
+        """Returns (result, err_code) — result is None on rate-limit errors or when
+        a platform agent is over today's HF call cap."""
         import urllib.error
+        if not _hf_budget.acquire(self._owned):
+            return None, None
         try:
             return self._hf.generate(prompt), None
         except urllib.error.HTTPError as e:
@@ -211,6 +260,10 @@ POLLINATIONS_REFERRER = os.environ.get("POLLINATIONS_REFERRER", "")
 HF_IMAGE_PROVIDER     = os.environ.get("HF_IMAGE_PROVIDER", "auto")
 # Video is the most expensive HF line item — off unless explicitly enabled.
 ENABLE_VIDEO          = os.environ.get("ENABLE_VIDEO", "").lower() == "true"
+# HF credit guard: platform agents share at most this many HF image calls per
+# UTC day; past it their images come from the fallback. Owned agents are uncapped.
+PLATFORM_HF_DAILY_CAP = int(os.environ.get("PLATFORM_HF_DAILY_CAP", "20"))
+_hf_budget = _HFCallBudget(PLATFORM_HF_DAILY_CAP)
 
 
 def require(name: str) -> str:
@@ -362,11 +415,15 @@ def _setup_agent(
             token       = POLLINATIONS_TOKEN or None,
             referrer    = POLLINATIONS_REFERRER or None,
         )
-        # Paid HF providers for every agent, with Pollinations as a safety net.
+        # Paid HF providers for every agent, with Pollinations as a safety net;
+        # platform agents only within PLATFORM_HF_DAILY_CAP, and with no internal
+        # retries (a failed call goes straight to the fallback instead of re-billing).
         # Always wrapped, so the global image rate limiter and the Pollinations
         # semaphore apply; calling pol_gen directly would bypass both.
-        hf_gen    = HuggingFaceGenerator(token=hf_token, provider=HF_IMAGE_PROVIDER) if hf_token else None
-        generator = _FallbackGenerator(hf_gen, pol_gen)
+        hf_gen    = HuggingFaceGenerator(
+            token=hf_token, provider=HF_IMAGE_PROVIDER, max_retries=3 if owned else 1,
+        ) if hf_token else None
+        generator = _FallbackGenerator(hf_gen, pol_gen, owned=owned)
         video_gen = HuggingFaceVideoGenerator(token=hf_token) if hf_token and owned and ENABLE_VIDEO else None
         client    = AgentClient(
             api_key         = agent["api_key"],
@@ -559,8 +616,8 @@ def main() -> None:
     )
     logger.info(
         "Images: all agents=HF providers (%s) → pollinations fallback "
-        "(token=%s) | video=%s",
-        HF_IMAGE_PROVIDER,
+        "(platform HF cap=%d/day, token=%s) | video=%s",
+        HF_IMAGE_PROVIDER, PLATFORM_HF_DAILY_CAP,
         "set" if POLLINATIONS_TOKEN else "MISSING — images will be watermarked",
         "enabled" if ENABLE_VIDEO else "disabled",
     )
@@ -633,8 +690,8 @@ def main() -> None:
             n_scheduled = len(_heap)
 
         logger.info(
-            "Status: %d registered (%d setting up), %d scheduled, step_pool=%d",
-            n_registered, n_setting_up, n_scheduled, max_workers,
+            "Status: %d registered (%d setting up), %d scheduled, step_pool=%d | HF image calls today: %s",
+            n_registered, n_setting_up, n_scheduled, max_workers, _hf_budget.summary(),
         )
 
         time.sleep(poll_interval)
