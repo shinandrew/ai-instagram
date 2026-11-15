@@ -110,6 +110,42 @@ class _HFCallBudget:
             return f"owned={self._calls['owned']} platform={self._calls['platform']}/{self._cap}"
 
 
+class _DailyImageCap:
+    """Ceiling on images generated per UTC day across all agents and backends.
+
+    Each request reserves a slot before generating, so failed attempts count
+    too and the real total stays under the limit. In memory: a restart resets it.
+    """
+
+    def __init__(self, limit: int) -> None:
+        self._lock = threading.Lock()
+        self._limit = limit
+        self._day = ""
+        self._used = 0
+
+    def acquire(self) -> bool:
+        with self._lock:
+            day = time.strftime("%Y-%m-%d", time.gmtime())
+            if day != self._day:
+                if self._day:
+                    logger.info("Images generated on %s: %d (limit %d)", self._day, self._used, self._limit)
+                self._day, self._used = day, 0
+            if self._used >= self._limit:
+                return False
+            self._used += 1
+            if self._used == self._limit:
+                logger.info("Daily image limit reached (%d) — no more images until 00:00 UTC", self._limit)
+            return True
+
+    def summary(self) -> str:
+        with self._lock:
+            return f"{self._used}/{self._limit}"
+
+
+# Set in main() when Pollinations is anonymous (one request at a time, >=45s apart)
+_pol_rate_limiter: "_ImageRateLimiter | None" = None
+
+
 class _FallbackGenerator:
     """Dynamically switches between HuggingFace and Pollinations.
 
@@ -128,10 +164,12 @@ class _FallbackGenerator:
     _pol_blocked_until: float = 0.0
     _pol_block_lock = threading.Lock()
 
-    def __init__(self, hf_gen, pol_gen, owned: bool = True) -> None:
-        self._hf = hf_gen   # may be None if no HF_TOKEN
+    def __init__(self, hf_gen, pol_gen, owned: bool = True, budget=None, name: str = "HF") -> None:
+        self._hf = hf_gen   # primary backend (HF, or Cloudflare in free mode); may be None
         self._pol = pol_gen
         self._owned = owned
+        self._budget = budget  # per-day HF call budget; None for free backends
+        self._name = name
 
     @classmethod
     def _hf_available(cls) -> bool:
@@ -156,18 +194,18 @@ class _FallbackGenerator:
         """Returns (result, err_code) — result is None on rate-limit errors or when
         a platform agent is over today's HF call cap."""
         import urllib.error
-        if not _hf_budget.acquire(self._owned):
+        if self._budget is not None and not self._budget.acquire(self._owned):
             return None, None
         try:
             return self._hf.generate(prompt), None
         except urllib.error.HTTPError as e:
             if e.code == 402:
                 self._block_hf(3600)  # quota exhausted: skip for 1 hour, then retry
-                logger.warning("HF quota (402) — credits depleted, disabling HF for 1h")
+                logger.warning("%s quota (402) — allocation used up, disabling it for 1h", self._name)
                 return None, 402
             if e.code == 429:
                 self._block_hf(30)     # rate-limited: skip HF for 30s only (transient)
-                logger.info("HF rate-limited (429) — trying Pollinations")
+                logger.info("%s rate-limited (429) — trying Pollinations", self._name)
                 return None, 429
             raise
 
@@ -181,6 +219,8 @@ class _FallbackGenerator:
         if not self._pol_available():
             return None, 429
         with _pol_semaphore:
+            if _pol_rate_limiter is not None:
+                _pol_rate_limiter.acquire()
             try:
                 return self._pol.generate(prompt), None
             except urllib.error.HTTPError as e:
@@ -193,7 +233,11 @@ class _FallbackGenerator:
     def generate(self, prompt: str) -> str:
         import urllib.error
 
-        # Acquire the global rate-limit slot before starting any HTTP request.
+        # Daily ceiling on images from any backend, then pace request starts.
+        if not _daily_images.acquire():
+            raise urllib.error.HTTPError(
+                url=None, code=429, msg="Daily image limit reached", hdrs=None, fp=None
+            )
         _image_rate_limiter.acquire()
 
         # Prefer HF if available (better quality, no IP rate-limit shared with other agents)
@@ -207,9 +251,9 @@ class _FallbackGenerator:
                 # which is how a six-week HF outage went unnoticed.
                 if cls._hf_fail_streak % 10 == 1:
                     logger.error(
-                        "HF image path failing (%d in a row) — all images are coming "
+                        "%s image path failing (%d in a row) — all images are coming "
                         "from Pollinations. Last error: %s: %s",
-                        cls._hf_fail_streak, type(exc).__name__, exc,
+                        self._name, cls._hf_fail_streak, type(exc).__name__, exc,
                     )
                 result = None
             if result is not None:
@@ -227,7 +271,7 @@ class _FallbackGenerator:
             try:
                 result, code = self._try_hf(prompt)
             except Exception as exc:
-                logger.warning("HF image generation unexpected error (retry): %s", exc)
+                logger.warning("%s image generation unexpected error (retry): %s", self._name, exc)
                 result = None
             if result is not None:
                 return result
@@ -269,6 +313,15 @@ ENABLE_VIDEO          = os.environ.get("ENABLE_VIDEO", "").lower() == "true"
 # UTC day; past it their images come from the fallback. Owned agents are uncapped.
 PLATFORM_HF_DAILY_CAP = int(os.environ.get("PLATFORM_HF_DAILY_CAP", "20"))
 _hf_budget = _HFCallBudget(PLATFORM_HF_DAILY_CAP)
+# Free mode backend: Cloudflare Workers AI (free 10,000 Neurons/day; on the free
+# plan an exhausted allocation errors instead of billing, and Pollinations takes over).
+CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+CLOUDFLARE_API_TOKEN  = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+CLOUDFLARE_IMAGE_MODEL = os.environ.get("CLOUDFLARE_IMAGE_MODEL", "@cf/black-forest-labs/flux-1-schnell")
+# Hard ceiling on images per UTC day across all agents and backends; request
+# starts are also spread evenly so the day's quota isn't spent in a burst.
+DAILY_IMAGE_LIMIT     = int(os.environ.get("DAILY_IMAGE_LIMIT", "480"))
+_daily_images = _DailyImageCap(DAILY_IMAGE_LIMIT)
 
 
 def require(name: str) -> str:
@@ -385,7 +438,7 @@ def _setup_agent(
     registry, then trigger the first-post fast path if needed.
     Called inside the thread pool.
     """
-    from aigram import AgentBrain, AgentClient, HuggingFaceGenerator, HuggingFaceVideoGenerator, PollinationsGenerator, PostStyle
+    from aigram import AgentBrain, AgentClient, CloudflareGenerator, HuggingFaceGenerator, HuggingFaceVideoGenerator, PollinationsGenerator, PostStyle
 
     agent_id = agent["agent_id"]
     username = agent["username"]
@@ -425,10 +478,20 @@ def _setup_agent(
         # retries (a failed call goes straight to the fallback instead of re-billing).
         # Always wrapped, so the global image rate limiter and the Pollinations
         # semaphore apply; calling pol_gen directly would bypass both.
-        hf_gen    = HuggingFaceGenerator(
-            token=hf_token, provider=HF_IMAGE_PROVIDER, max_retries=3 if owned else 1,
-        ) if hf_token else None
-        generator = _FallbackGenerator(hf_gen, pol_gen, owned=owned)
+        if hf_token:
+            hf_gen    = HuggingFaceGenerator(
+                token=hf_token, provider=HF_IMAGE_PROVIDER, max_retries=3 if owned else 1,
+            )
+            generator = _FallbackGenerator(hf_gen, pol_gen, owned=owned, budget=_hf_budget, name="HF")
+        elif CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN:
+            # Free mode: Cloudflare Workers AI first, Pollinations when it is exhausted
+            cf_gen    = CloudflareGenerator(
+                account_id=CLOUDFLARE_ACCOUNT_ID, api_token=CLOUDFLARE_API_TOKEN,
+                model=CLOUDFLARE_IMAGE_MODEL,
+            )
+            generator = _FallbackGenerator(cf_gen, pol_gen, owned=owned, name="Cloudflare")
+        else:
+            generator = _FallbackGenerator(None, pol_gen, owned=owned)
         video_gen = HuggingFaceVideoGenerator(token=hf_token) if hf_token and owned and ENABLE_VIDEO else None
         client    = AgentClient(
             api_key         = agent["api_key"],
@@ -607,22 +670,34 @@ def main() -> None:
     if not PAID_IMAGES:
         # Withholding the token disables every HF path: images, avatars, video.
         hf_token = ""
-        logger.info("PAID_IMAGES off — all images come from Pollinations; no HF credit is spent")
-        if not POLLINATIONS_TOKEN:
-            # Anonymous Pollinations allows one request at a time per IP, >=45s apart
-            global _pol_semaphore
-            _pol_semaphore = threading.Semaphore(1)
-            _image_rate_limiter._min_interval = 45.0
+        logger.info(
+            "PAID_IMAGES off — no HF credit is spent; images come from %s",
+            "Cloudflare Workers AI → Pollinations" if CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN
+            else "Pollinations only (set CLOUDFLARE_ACCOUNT_ID/CLOUDFLARE_API_TOKEN for the free backend)",
+        )
     elif not hf_token:
         logger.warning(
             "HF_TOKEN not set — image generation will fall back to Pollinations only. "
             "Set HF_TOKEN for HuggingFace image generation."
         )
+    if not POLLINATIONS_TOKEN:
+        # Anonymous Pollinations allows one request at a time per IP, >=45s apart
+        global _pol_semaphore, _pol_rate_limiter
+        _pol_semaphore = threading.Semaphore(1)
+        _pol_rate_limiter = _ImageRateLimiter(min_interval_secs=45.0)
+    # Spread image starts so DAILY_IMAGE_LIMIT is never hit in one burst
+    _image_rate_limiter._min_interval = max(_image_rate_limiter._min_interval, 86400 / max(DAILY_IMAGE_LIMIT, 1) / 2)
+    logger.info(
+        "Daily image limit: %d/day (UTC), request starts >=%.0fs apart",
+        DAILY_IMAGE_LIMIT, _image_rate_limiter._min_interval,
+    )
     logger.info(
         "Nursery starting — pool=%d | brain=%s (%s) | images=%s | human_pleaser=%.0f%%",
         max_workers, brain_model, brain_provider,
         image_mode if image_mode == "openai" else
-        ("hf→pollinations (fallback)" if hf_token else "pollinations only"),
+        ("hf→pollinations (fallback)" if hf_token else
+         "cloudflare→pollinations (fallback)" if CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN else
+         "pollinations only"),
         human_pleaser_ratio * 100,
     )
     logger.info(
@@ -705,8 +780,8 @@ def main() -> None:
             n_scheduled = len(_heap)
 
         logger.info(
-            "Status: %d registered (%d setting up), %d scheduled, step_pool=%d | HF image calls today: %s",
-            n_registered, n_setting_up, n_scheduled, max_workers, _hf_budget.summary(),
+            "Status: %d registered (%d setting up), %d scheduled, step_pool=%d | images today: %s | HF calls today: %s",
+            n_registered, n_setting_up, n_scheduled, max_workers, _daily_images.summary(), _hf_budget.summary(),
         )
 
         time.sleep(poll_interval)

@@ -5,6 +5,7 @@ Supported:
   - openai        — gpt-image-1-mini via OpenAI API (DALL·E 3 was retired 2026-05-12)
   - huggingface   — FLUX.1-schnell via HuggingFace Inference API (free, recommended)
   - pollinations  — Pollinations.ai free endpoint (deprecated — rate-limited)
+  - cloudflare    — FLUX.1-schnell via Cloudflare Workers AI (free daily allocation)
   - url           — Pass a pre-generated image URL directly (BYO generator)
 """
 
@@ -147,6 +148,57 @@ class PollinationsGenerator(ImageGenerator):
                     continue
                 raise
         raise RuntimeError("Pollinations image generation failed after retries")
+
+
+class CloudflareGenerator(ImageGenerator):
+    """
+    Image generation via Cloudflare Workers AI (FLUX.1-schnell by default).
+
+    The Workers Free plan includes 10,000 Neurons per day (reset 00:00 UTC) at
+    no charge; once they are used up, calls fail with an error rather than
+    billing. Needs an account id and an API token with Workers AI Read + Edit.
+
+    Returns base64-encoded JPEG bytes (not a URL).
+    """
+
+    generates_url: bool = False
+
+    API = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
+
+    def __init__(
+        self,
+        account_id: str,
+        api_token: str,
+        model: str = "@cf/black-forest-labs/flux-1-schnell",
+        steps: int = 4,
+        timeout: int = 120,
+    ) -> None:
+        self._url = self.API.format(account_id=account_id, model=model)
+        self._token = api_token
+        self._steps = steps
+        self._timeout = timeout
+
+    def generate(self, prompt: str) -> str:
+        import json
+
+        payload = json.dumps({"prompt": prompt[:2048], "steps": self._steps}).encode()
+        req = urllib.request.Request(
+            self._url,
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {self._token}",
+                "Content-Type": "application/json",
+                "User-Agent": "aigram/1.0",
+            },
+            method="POST",
+        )
+        # HTTPError (incl. 429 and an exhausted free allocation) propagates to the caller
+        with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            body = json.loads(resp.read())
+        image = (body.get("result") or {}).get("image")
+        if not body.get("success", True) or not image:
+            raise RuntimeError(f"Cloudflare image generation failed: {body.get('errors')}")
+        return image
 
 
 class HuggingFaceGenerator(ImageGenerator):
