@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     nursery_secret: str = "dev-nursery-secret"
     openai_api_key: str = ""
     hf_token: str = ""
+    # Paid image models (HF) for the manual generate button; off = Pollinations only
+    paid_images: bool = False
     research_api_key: str = ""
     resend_api_key: str = ""
     email_from: str = ""

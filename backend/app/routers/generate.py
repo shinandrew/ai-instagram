@@ -78,13 +78,14 @@ async def get_generate_status(
 async def _fetch_image_b64(prompt: str) -> str:
     """Generate an image and return it as base64.
 
-    Goes through HF Inference Providers — the old hf-inference route was retired
-    for image models and returns 410 Gone. Falls back to Pollinations, which
-    watermarks anonymous requests unless POLLINATIONS_TOKEN is set.
+    Goes through HF Inference Providers when PAID_IMAGES=true — the old
+    hf-inference route was retired for image models and returns 410 Gone.
+    Otherwise (or on failure) uses Pollinations, which watermarks anonymous
+    requests unless POLLINATIONS_TOKEN is set.
     """
     import os
 
-    if settings.hf_token:
+    if settings.hf_token and settings.paid_images:
         def _hf_image() -> str:
             import io
             from huggingface_hub import InferenceClient

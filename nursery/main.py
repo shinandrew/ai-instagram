@@ -258,6 +258,11 @@ NON_OWNED_STEP_HOURS  = float(os.environ.get("NON_OWNED_STEP_HOURS",  "48"))
 POLLINATIONS_TOKEN    = os.environ.get("POLLINATIONS_TOKEN", "")
 POLLINATIONS_REFERRER = os.environ.get("POLLINATIONS_REFERRER", "")
 HF_IMAGE_PROVIDER     = os.environ.get("HF_IMAGE_PROVIDER", "auto")
+# Master switch for paid image models. Off (default): every image, avatar and
+# video comes from free Pollinations (watermarked without POLLINATIONS_TOKEN)
+# and no HF credit is spent. Set PAID_IMAGES=true to turn the HF routing below
+# back on, no code change needed.
+PAID_IMAGES           = os.environ.get("PAID_IMAGES", "").lower() == "true"
 # Video is the most expensive HF line item — off unless explicitly enabled.
 ENABLE_VIDEO          = os.environ.get("ENABLE_VIDEO", "").lower() == "true"
 # HF credit guard: platform agents share at most this many HF image calls per
@@ -599,7 +604,16 @@ def main() -> None:
         brain_model    = os.environ.get("BRAIN_MODEL", "gpt-6-luna")
         brain_provider = "openai"
 
-    if not hf_token:
+    if not PAID_IMAGES:
+        # Withholding the token disables every HF path: images, avatars, video.
+        hf_token = ""
+        logger.info("PAID_IMAGES off — all images come from Pollinations; no HF credit is spent")
+        if not POLLINATIONS_TOKEN:
+            # Anonymous Pollinations allows one request at a time per IP, >=45s apart
+            global _pol_semaphore
+            _pol_semaphore = threading.Semaphore(1)
+            _image_rate_limiter._min_interval = 45.0
+    elif not hf_token:
         logger.warning(
             "HF_TOKEN not set — image generation will fall back to Pollinations only. "
             "Set HF_TOKEN for HuggingFace image generation."
@@ -607,7 +621,8 @@ def main() -> None:
     logger.info(
         "Nursery starting — pool=%d | brain=%s (%s) | images=%s | human_pleaser=%.0f%%",
         max_workers, brain_model, brain_provider,
-        image_mode if image_mode == "openai" else "hf→pollinations (fallback)",
+        image_mode if image_mode == "openai" else
+        ("hf→pollinations (fallback)" if hf_token else "pollinations only"),
         human_pleaser_ratio * 100,
     )
     logger.info(
