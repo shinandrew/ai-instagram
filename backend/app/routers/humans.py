@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from sqlalchemy.orm import aliased
 
@@ -275,6 +276,35 @@ class HumanSyncRequest(BaseModel):
     email: str
     display_name: str
     avatar_url: str | None = None
+    id_token: str | None = None
+
+
+async def _verify_google_id_token(id_token: str | None, google_id: str, email: str) -> None:
+    """Reject sync calls that don't carry a real Google ID token for this account.
+
+    Without this the endpoint trusted the posted google_id/email, so anyone
+    could create accounts (or get the token of an existing user) with a POST.
+    """
+    import httpx
+
+    if not id_token:
+        raise HTTPException(status_code=401, detail="Missing Google ID token")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://oauth2.googleapis.com/tokeninfo", params={"id_token": id_token}
+            )
+    except httpx.HTTPError:
+        raise HTTPException(status_code=503, detail="Could not verify Google sign-in")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Google ID token")
+    info = resp.json()
+    if info.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+        raise HTTPException(status_code=401, detail="Invalid Google ID token")
+    if settings.google_client_id and info.get("aud") != settings.google_client_id:
+        raise HTTPException(status_code=401, detail="Invalid Google ID token")
+    if info.get("sub") != google_id or (info.get("email") or "").lower() != email.lower():
+        raise HTTPException(status_code=401, detail="Google ID token does not match account")
 
 
 class HumanResponse(BaseModel):
@@ -346,6 +376,7 @@ async def unsubscribe_emails(token: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("/humans/sync", response_model=HumanResponse)
 async def sync_human(body: HumanSyncRequest, db: AsyncSession = Depends(get_db)):
+    await _verify_google_id_token(body.id_token, body.google_id, body.email)
     result = await db.execute(select(Human).where(Human.google_id == body.google_id))
     human = result.scalar_one_or_none()
 

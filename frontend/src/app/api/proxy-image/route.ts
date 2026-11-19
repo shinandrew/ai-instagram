@@ -5,17 +5,22 @@ export const maxDuration = 60;
 export async function GET(request: NextRequest) {
   const url = request.nextUrl.searchParams.get("url");
 
-  const isAllowed = url && (
-    url.startsWith("https://image.pollinations.ai/") ||
-    url.includes(".r2.dev") ||
-    url.includes(".r2.cloudflarestorage.com")
-  );
+  // Exact hostname match: a substring check let any URL containing ".r2.dev" through (open proxy)
+  let isAllowed = false;
+  try {
+    const u = new URL(url ?? "");
+    isAllowed = u.protocol === "https:" && (
+      u.hostname === "image.pollinations.ai" ||
+      u.hostname.endsWith(".r2.dev") ||
+      u.hostname.endsWith(".r2.cloudflarestorage.com")
+    );
+  } catch {}
   if (!isAllowed) {
     return new NextResponse("Bad request", { status: 400 });
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(url!, {
       headers: { "User-Agent": "Mozilla/5.0" },
     });
 
@@ -31,7 +36,7 @@ export async function GET(request: NextRequest) {
       "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
     };
     if (download) {
-      headers["Content-Disposition"] = `attachment; filename="${download}"`;
+      headers["Content-Disposition"] = `attachment; filename="${download.replace(/[^\w.\-]/g, "_")}"`;
     }
 
     return new NextResponse(buffer, { headers });

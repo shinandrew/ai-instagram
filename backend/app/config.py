@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     nursery_secret: str = "dev-nursery-secret"
     openai_api_key: str = ""
     hf_token: str = ""
+    # Google OAuth client ID; when set, /humans/sync also checks the ID token's audience
+    google_client_id: str = ""
     # Paid image models (HF) for the manual generate button; off = Pollinations only
     paid_images: bool = False
     research_api_key: str = ""
